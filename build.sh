@@ -286,19 +286,13 @@ if [ ! -f ffmpeg_done ]; then
 
     echo "=== PKG-CONFIG DEBUG ==="
     which pkg-config
-    echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
-    echo "--- aom static exists ---"
-    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --static --exists --print-errors 'aom >= 2.0.0' 2>&1 || true
-    echo "--- aom static libs ---"
-    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --static --libs aom 2>&1 || true
-    echo "--- aom.pc contents ---"
-    cat $PREFIX/lib/pkgconfig/aom.pc 2>&1 || true
-    echo "--- x265 ---"
-    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion x265 2>&1 || true
-    echo "--- x265 static exists ---"
-    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --static --exists --print-errors 'x265 >= 0.0' 2>&1 || true
+    for pkg in aom x264 x265 opus ogg vorbis vpx libmp3lame SvtAv1Enc; do
+        echo -n "  $pkg: "
+        PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion $pkg 2>&1 || echo "MISSING"
+    done
     echo "=== END DEBUG ==="
 
+    set +e
     ./configure \
         --cross-prefix=${TARGET}${API}- \
         --cc=${CC} --cxx=${CXX} --ld=${CC} \
@@ -316,6 +310,14 @@ if [ ! -f ffmpeg_done ]; then
         --disable-ffplay --disable-ffprobe --disable-avdevice \
         --disable-doc --disable-debug \
         --prefix=$PREFIX
+    cfg_rc=$?
+    if [ $cfg_rc -ne 0 ]; then
+        echo "=== CONFIG FAILED ==="
+        echo "=== config.log tail ==="
+        tail -50 ffbuild/config.log
+        exit $cfg_rc
+    fi
+    set -e
 
     echo "=== Config exit code: $? ==="
     echo "=== Config done, starting make ==="

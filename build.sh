@@ -290,6 +290,12 @@ if [ ! -f ffmpeg_done ]; then
         echo -n "  $pkg: "
         PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion $pkg 2>&1 || echo "MISSING"
     done
+    echo "=== HEADER CHECK ==="
+    find $PREFIX/include -name "x265*.h" -o -name "x264*.h" -o -name "aom*.h" 2>/dev/null | head -20
+    echo "=== opus .pc ==="
+    cat $PREFIX/lib/pkgconfig/opus.pc 2>&1 || echo "NO opus.pc"
+    echo "=== x265 .pc ==="
+    cat $PREFIX/lib/pkgconfig/x265.pc 2>&1 || echo "NO x265.pc"
     echo "=== END DEBUG ==="
 
     set +e

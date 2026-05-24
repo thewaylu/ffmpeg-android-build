@@ -330,7 +330,7 @@ if [ ! -f ffmpeg_done ]; then
         --ar=${AR} --nm=${NM} --ranlib=${RANLIB} \
         --pkg-config=/usr/bin/pkg-config \
         --pkg-config-flags=--static \
-        --extra-cflags="-fPIC" \
+        --extra-cflags="-fPIC -DPIC" \
         --enable-cross-compile --target-os=android --arch=aarch64 \
         --enable-gpl --enable-version3 \
         --enable-libx264 --enable-libx265 --enable-libvpx \

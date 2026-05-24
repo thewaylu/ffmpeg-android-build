@@ -1,86 +1,104 @@
-INSTALL	libavutil/libavutil.pc
-FFmpeg DONE
 ========== MERGING INTO SINGLE libffmpeg.so ==========
 Available static libs:
--rw-r--r-- 1 runner runner 9.1M May 24 20:44 libSvtAv1Enc.a
--rw-r--r-- 1 runner runner 9.8M May 24 20:47 libaom.a
--rw-r--r-- 1 runner runner  15M May 24 20:49 libavcodec.a
--rw-r--r-- 1 runner runner 5.2M May 24 20:49 libavfilter.a
--rw-r--r-- 1 runner runner 4.7M May 24 20:49 libavformat.a
--rw-r--r-- 1 runner runner 904K May 24 20:49 libavutil.a
--rw-r--r-- 1 runner runner 505K May 24 20:45 libmp3lame.a
--rw-r--r-- 1 runner runner  32K May 24 20:45 libogg.a
--rw-r--r-- 1 runner runner 921K May 24 20:45 libopus.a
--rw-r--r-- 1 runner runner 122K May 24 20:49 libswresample.a
--rw-r--r-- 1 runner runner 868K May 24 20:49 libswscale.a
--rw-r--r-- 1 runner runner 252K May 24 20:45 libvorbis.a
--rw-r--r-- 1 runner runner 742K May 24 20:45 libvorbisenc.a
--rw-r--r-- 1 runner runner  35K May 24 20:45 libvorbisfile.a
--rw-r--r-- 1 runner runner 2.5M May 24 20:46 libvpx.a
--rw-r--r-- 1 runner runner 2.1M May 24 20:44 libx264.a
--rw-r--r-- 1 runner runner 2.8M May 24 20:44 libx265.a
+-rw-r--r-- 1 runner runner 9.1M May 24 20:53 libSvtAv1Enc.a
+-rw-r--r-- 1 runner runner 9.8M May 24 20:55 libaom.a
+-rw-r--r-- 1 runner runner  15M May 24 20:58 libavcodec.a
+-rw-r--r-- 1 runner runner 5.2M May 24 20:58 libavfilter.a
+-rw-r--r-- 1 runner runner 4.7M May 24 20:58 libavformat.a
+-rw-r--r-- 1 runner runner 904K May 24 20:58 libavutil.a
+-rw-r--r-- 1 runner runner 505K May 24 20:54 libmp3lame.a
+-rw-r--r-- 1 runner runner  32K May 24 20:53 libogg.a
+-rw-r--r-- 1 runner runner 921K May 24 20:53 libopus.a
+-rw-r--r-- 1 runner runner 122K May 24 20:58 libswresample.a
+-rw-r--r-- 1 runner runner 868K May 24 20:58 libswscale.a
+-rw-r--r-- 1 runner runner 252K May 24 20:54 libvorbis.a
+-rw-r--r-- 1 runner runner 742K May 24 20:54 libvorbisenc.a
+-rw-r--r-- 1 runner runner  35K May 24 20:54 libvorbisfile.a
+-rw-r--r-- 1 runner runner 2.5M May 24 20:54 libvpx.a
+-rw-r--r-- 1 runner runner 2.1M May 24 20:52 libx264.a
+-rw-r--r-- 1 runner runner 2.8M May 24 20:53 libx265.a
 === Linking libffmpeg.so ===
 clang: warning: argument unused during compilation: '-static-libstdc++' [-Wunused-command-line-argument]
 ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'ff_tx_tab_32_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft32_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'ff_tx_tab_32_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft32_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'ff_tx_tab_32_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft32_ns_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'ff_tx_tab_32_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft32_ns_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'ff_tx_tab_32_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft_sr_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'ff_tx_tab_32_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft_sr_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'ff_tx_tab_64_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft_sr_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'ff_tx_tab_64_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft_sr_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'ff_tx_tab_128_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft_sr_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'ff_tx_tab_128_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft_sr_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'ff_tx_tab_256_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft_sr_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'ff_tx_tab_256_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft_sr_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'ff_tx_tab_512_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft_sr_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'ff_tx_tab_512_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft_sr_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'ff_tx_tab_1024_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft_sr_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'ff_tx_tab_1024_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft_sr_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'ff_tx_tab_2048_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft_sr_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'ff_tx_tab_2048_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft_sr_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'ff_tx_tab_4096_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft_sr_float_neon) in archive libavutil.a
+
 ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'ff_tx_tab_4096_float'; recompile with -fPIC
 >>> defined in libavutil.a(tx_float.o)
 >>> referenced by tx_float_neon.o:(ff_tx_fft_sr_float_neon) in archive libavutil.a
+
 ld.lld: error: too many errors emitted, stopping now (use --error-limit=0 to see all errors)
 clang: error: linker command failed with exit code 1 (use -v to see invocation)
 Error: Process completed with exit code 1.

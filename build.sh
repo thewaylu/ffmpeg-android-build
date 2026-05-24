@@ -29,12 +29,7 @@ export STRIP=${TOOLCHAIN}/bin/llvm-strip
 export LD=${TOOLCHAIN}/bin/ld.lld
 export PATH=$TOOLCHAIN/bin:$PATH
 
-echo "=== NDK toolchain ==="
-$CC --version | head -1
-echo "CC=$CC"
-echo "SYSROOT=$SYSROOT"
-
-# ---- NDK Download ----
+# ---- NDK Download (MUST be before using CC) ----
 mkdir -p $BUILD_ROOT
 if [ ! -d "$NDK_ROOT" ]; then
     echo "=== Downloading Android NDK r27c ==="
@@ -47,6 +42,11 @@ if [ ! -d "$NDK_ROOT" ]; then
 fi
 
 mkdir -p $SRC $PREFIX
+
+echo "=== NDK toolchain ==="
+$CC --version | head -1 || echo "(version check skipped)"
+echo "CC=$CC"
+echo "SYSROOT=$SYSROOT"
 
 # ---- Create missing symlinks for cross-prefix tools (NDK r27+ only has llvm-* variants)
 for tool in strings strip ar nm ranlib readelf objdump addr2line; do

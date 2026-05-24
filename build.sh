@@ -114,6 +114,10 @@ if [ ! -f x265_done ]; then
         -DENABLE_SHARED=OFF -DENABLE_CLI=OFF \
         -DCMAKE_ANDROID_STANDALONE_TOOLCHAIN=
     make $MAKEFLAGS && make install
+    # x265 cmake doesn't install headers, do it manually
+    cp ../source/x265.h $PREFIX/include/
+    [ -f x265_config.h ] && cp x265_config.h $PREFIX/include/
+    echo "x265 headers installed"
     touch $SRC/x265_done
 fi
 # x265 cmake doesn't create .pc, do it manually

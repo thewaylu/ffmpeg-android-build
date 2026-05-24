@@ -121,6 +121,7 @@ if [ ! -f x265_done ]; then
     touch $SRC/x265_done
 fi
 # x265 cmake doesn't create .pc, do it manually
+# Android has no separate libpthread (it's in libc)
 cat > $PREFIX/lib/pkgconfig/x265.pc << EOF
 prefix=$PREFIX
 exec_prefix=\${prefix}
@@ -131,9 +132,11 @@ Name: x265
 Description: H.265/HEVC video encoder
 Version: 4.1
 Libs: -L\${libdir} -lx265
-Libs.private: -lstdc++ -lm -ldl -lpthread
+Libs.private: -lstdc++ -lm -ldl
 Cflags: -I\${includedir}
 EOF
+# Verify install
+ls -la $PREFIX/lib/libx265.a 2>&1 || echo "WARN: libx265.a missing"
 echo "x265 DONE"
 
 # --- SVT-AV1 ---

@@ -28,6 +28,8 @@ export RANLIB=${TOOLCHAIN}/bin/llvm-ranlib
 export STRIP=${TOOLCHAIN}/bin/llvm-strip
 export LD=${TOOLCHAIN}/bin/ld.lld
 export PATH=$TOOLCHAIN/bin:$PATH
+export CFLAGS="-fPIC"
+export CXXFLAGS="-fPIC"
 
 # ---- NDK Download (MUST be before using CC) ----
 mkdir -p $BUILD_ROOT

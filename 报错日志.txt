@@ -1,27 +1,87 @@
-[ 81%] Building CXX object common/CMakeFiles/common.dir/temporalfilter.cpp.o
-[ 81%] Built target common
-[ 82%] Generating ssd-a.S.o
-[ 83%] Generating asm.S.o
-[ 85%] Generating blockcopy8.S.o
-[ 86%] Generating dct.S.o
-error: error: unknown target CPU 'armv8-a'
-unknown target CPU 'armv8-a'
-note: valid target CPU values are: nocona, core2, penryn, bonnell, atom, silvermont, slm, goldmont, goldmont-plus, tremont, nehalem, corei7, westmere, sandybridge, corei7-avx, ivybridge, core-avx-i, haswell, core-avx2, broadwell, skylake, skylake-avx512, skx, cascadelake, cooperlake, cannonlake, icelake-client, rocketlake, icelake-server, tigerlake, sapphirerapids, alderlake, raptorlake, meteorlake, arrowlake, arrowlake-s, lunarlake, gracemont, pantherlake, sierraforest, grandridge, graniterapids, graniterapids-d, emeraldrapids, clearwaterforest, knl, knm, k8, athlon64, athlon-fx, opteron, k8-sse3, athlon64-sse3, opteron-sse3, amdfam10, barcelona, btver1, btver2, bdver1, bdver2, bdver3, bdver4, znver1, znver2, znver3, znver4, x86-64, x86-64-v2, x86-64-v3, x86-64-v4
-note: valid target CPU values are: nocona, core2, penryn, bonnell, atom, silvermont, slm, goldmont, goldmont-plus, tremont, nehalem, corei7, westmere, sandybridge, corei7-avx, ivybridge, core-avx-i, haswell, core-avx2, broadwell, skylake, skylake-avx512, skx, cascadelake, cooperlake, cannonlake, icelake-client, rocketlake, icelake-server, tigerlake, sapphirerapids, alderlake, raptorlake, meteorlake, arrowlake, arrowlake-s, lunarlake, gracemont, pantherlake, sierraforest, grandridge, graniterapids, graniterapids-d, emeraldrapids, clearwaterforest, knl, knm, k8, athlon64, athlon-fx, opteron, k8-sse3, athlon64-sse3, opteron-sse3, amdfam10, barcelona, btver1, btver2, bdver1, bdver2, bdver3, bdver4, znver1, znver2, znver3, znver4, x86-64, x86-64-v2, x86-64-v3, x86-64-v4
-error: unknown target CPU 'armv8-a'
-note: valid target CPU values are: nocona, core2, penryn, bonnell, atom, silvermont, slm, goldmont, goldmont-plus, tremont, nehalem, corei7, westmere, sandybridge, corei7-avx, ivybridge, core-avx-i, haswell, core-avx2, broadwell, skylake, skylake-avx512, skx, cascadelake, cooperlake, cannonlake, icelake-client, rocketlake, icelake-server, tigerlake, sapphirerapids, alderlake, raptorlake, meteorlake, arrowlake, arrowlake-s, lunarlake, gracemont, pantherlake, sierraforest, grandridge, graniterapids, graniterapids-d, emeraldrapids, clearwaterforest, knl, knm, k8, athlon64, athlon-fx, opteron, k8-sse3, athlon64-sse3, opteron-sse3, amdfam10, barcelona, btver1, btver2, bdver1, bdver2, bdver3, bdver4, znver1, znver2, znver3, znver4, x86-64, x86-64-v2, x86-64-v3, x86-64-v4
-error: unknown target CPU 'armv8-a'
-note: valid target CPU values are: nocona, core2, penryn, bonnell, atom, silvermont, slm, goldmont, goldmont-plus, tremont, nehalem, corei7, westmere, sandybridge, corei7-avx, ivybridge, core-avx-i, haswell, core-avx2, broadwell, skylake, skylake-avx512, skx, cascadelake, cooperlake, cannonlake, icelake-client, rocketlake, icelake-server, tigerlake, sapphirerapids, alderlake, raptorlake, meteorlake, arrowlake, arrowlake-s, lunarlake, gracemont, pantherlake, sierraforest, grandridge, graniterapids, graniterapids-d, emeraldrapids, clearwaterforest, knl, knm, k8, athlon64, athlon-fx, opteron, k8-sse3, athlon64-sse3, opteron-sse3, amdfam10, barcelona, btver1, btver2, bdver1, bdver2, bdver3, bdver4, znver1, znver2, znver3, znver4, x86-64, x86-64-v2, x86-64-v3, x86-64-v4
-make[2]: *** [CMakeFiles/x265-static.dir/build.make:110: ssd-a.S.o] Error 1
-make[2]: *** Waiting for unfinished jobs....
-make[2]: *** [CMakeFiles/x265-static.dir/build.make:74: asm.S.o] Error 1
-make[2]: *** [CMakeFiles/x265-static.dir/build.make:106: blockcopy8.S.o] Error 1
-make[2]: *** [CMakeFiles/x265-static.dir/build.make:122: dct.S.o] Error 1
-make[1]: *** [CMakeFiles/Makefile2:134: CMakeFiles/x265-static.dir/all] Error 2
-make: *** [Makefile:136: all] Error 2
-x265 headers installed
-=== x265 .a files ===
-=== PREFIX lib ===
--rw-r--r-- 1 runner runner 2139598 May 24 20:24 /tmp/ffbuild/install/lib/libx264.a
-FATAL: libx265.a not found anywhere!
+INSTALL	libavutil/tdrdi.h
+INSTALL	libavutil/threadmessage.h
+INSTALL	libavutil/time.h
+INSTALL	libavutil/timecode.h
+ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'pnts'; recompile with -fPIC
+>>> defined in libmp3lame.a(tabinit.o)
+>>> referenced by tabinit.c
+>>>               tabinit.o:(make_decode_tables) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'pnts'; recompile with -fPIC
+>>> defined in libmp3lame.a(tabinit.o)
+>>> referenced by tabinit.c
+>>>               tabinit.o:(make_decode_tables) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'decwin'; recompile with -fPIC
+>>> defined in libmp3lame.a(tabinit.o)
+>>> referenced by tabinit.c
+>>>               tabinit.o:(make_decode_tables) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'decwin'; recompile with -fPIC
+>>> defined in libmp3lame.a(tabinit.o)
+>>> referenced by tabinit.c
+>>>               tabinit.o:(make_decode_tables) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'tabsel_123'; recompile with -fPIC
+>>> defined in libmp3lame.a(common.o)
+>>> referenced by common.c
+>>>               common.o:(decode_header) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'tabsel_123'; recompile with -fPIC
+>>> defined in libmp3lame.a(common.o)
+>>> referenced by common.c
+>>>               common.o:(decode_header) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'freqs'; recompile with -fPIC
+>>> defined in libmp3lame.a(common.o)
+>>> referenced by common.c
+>>>               common.o:(decode_header) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'freqs'; recompile with -fPIC
+>>> defined in libmp3lame.a(common.o)
+>>> referenced by common.c
+>>>               common.o:(decode_header) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'tabsel_123'; recompile with -fPIC
+>>> defined in libmp3lame.a(common.o)
+>>> referenced by common.c
+>>>               common.o:(decode_header) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'tabsel_123'; recompile with -fPIC
+>>> defined in libmp3lame.a(common.o)
+>>> referenced by common.c
+>>>               common.o:(decode_header) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'freqs'; recompile with -fPIC
+>>> defined in libmp3lame.a(common.o)
+>>> referenced by common.c
+>>>               common.o:(decode_header) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'freqs'; recompile with -fPIC
+>>> defined in libmp3lame.a(common.o)
+>>> referenced by common.c
+>>>               common.o:(decode_header) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'tabsel_123'; recompile with -fPIC
+>>> defined in libmp3lame.a(common.o)
+>>> referenced by common.c
+>>>               common.o:(decode_header) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'tabsel_123'; recompile with -fPIC
+>>> defined in libmp3lame.a(common.o)
+>>> referenced by common.c
+>>>               common.o:(decode_header) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'freqs'; recompile with -fPIC
+>>> defined in libmp3lame.a(common.o)
+>>> referenced by common.c
+>>>               common.o:(decode_header) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'freqs'; recompile with -fPIC
+>>> defined in libmp3lame.a(common.o)
+>>> referenced by common.c
+>>>               common.o:(decode_header) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'bitrate_table'; recompile with -fPIC
+>>> defined in libmp3lame.a(tables.o)
+>>> referenced by tables.c
+>>>               tables.o:(lame_get_bitrate) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'bitrate_table'; recompile with -fPIC
+>>> defined in libmp3lame.a(tables.o)
+>>> referenced by tables.c
+>>>               tables.o:(lame_get_bitrate) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol 'samplerate_table'; recompile with -fPIC
+>>> defined in libmp3lame.a(tables.o)
+>>> referenced by tables.c
+>>>               tables.o:(lame_get_samplerate) in archive libmp3lame.a
+ld.lld: error: relocation R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 'samplerate_table'; recompile with -fPIC
+>>> defined in libmp3lame.a(tables.o)
+>>> referenced by tables.c
+>>>               tables.o:(lame_get_samplerate) in archive libmp3lame.a
+ld.lld: error: too many errors emitted, stopping now (use --error-limit=0 to see all errors)
+clang: error: linker command failed with exit code 1 (use -v to see invocation)
 Error: Process completed with exit code 1.

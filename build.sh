@@ -340,6 +340,7 @@ if [ ! -f ffmpeg_done ]; then
         --enable-mediacodec --enable-jni \
         --enable-small \
         --enable-static --disable-shared \
+        --disable-asm \
         --disable-ffplay --disable-ffprobe --disable-avdevice \
         --disable-doc --disable-debug \
         --prefix=$PREFIX

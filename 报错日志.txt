@@ -1,67 +1,27 @@
-Name: x265
-Description: H.265/HEVC video encoder
-Version: 4.1
-Libs: -L${libdir} -l:libx265.a
-Libs.private: -lstdc++ -lm -ldl
-Cflags: -I${includedir}
-=== END DEBUG ===
-ERROR: x265 not found using pkg-config
-
-If you think configure made a mistake, make sure you are using the latest
-version from Git.  If the latest version fails, report the problem to the
-ffmpeg-user@ffmpeg.org mailing list or IRC #ffmpeg on irc.libera.chat.
-Include the log file "ffbuild/config.log" produced by configure as this will help
-solve the problem.
-=== CONFIG FAILED ===
-=== config.log tail ===
-    1	#include <x264.h>
-    2	#if !(X264_BUILD >= 163)
-    3	#error "unsatisfied condition: X264_BUILD >= 163"
-    4	#endif
-END /tmp/ffconf.kg9ppjDB/test.c
-/tmp/ffbuild/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang -D_ISOC11_SOURCE -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -Dstrtod=avpriv_strtod -DPIC -I/tmp/ffbuild/install/include -fPIC -std=c17 -fPIE -fomit-frame-pointer -fPIC -pthread -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/svt-av1 -DRTC_BUILD=0 -UEB_DLL -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -E -o /tmp/ffconf.kg9ppjDB/test.o /tmp/ffconf.kg9ppjDB/test.c
-In file included from /tmp/ffconf.kg9ppjDB/test.c:1:
-/tmp/ffbuild/install/include/x264.h:40:4: warning: You must include stdint.h or inttypes.h before x264.h [-W#warnings]
-   40 | #  warning You must include stdint.h or inttypes.h before x264.h
-      |    ^
-1 warning generated.
-check_cpp_condition libx262 x264.h X264_MPEG2
-test_cpp_condition x264.h X264_MPEG2
-test_cpp
-BEGIN /tmp/ffconf.kg9ppjDB/test.c
-    1	#include <x264.h>
-    2	#if !(X264_MPEG2)
-    3	#error "unsatisfied condition: X264_MPEG2"
-    4	#endif
-END /tmp/ffconf.kg9ppjDB/test.c
-/tmp/ffbuild/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang -D_ISOC11_SOURCE -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -Dstrtod=avpriv_strtod -DPIC -I/tmp/ffbuild/install/include -fPIC -std=c17 -fPIE -fomit-frame-pointer -fPIC -pthread -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/svt-av1 -DRTC_BUILD=0 -UEB_DLL -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -E -o /tmp/ffconf.kg9ppjDB/test.o /tmp/ffconf.kg9ppjDB/test.c
-In file included from /tmp/ffconf.kg9ppjDB/test.c:1:
-/tmp/ffbuild/install/include/x264.h:40:4: warning: You must include stdint.h or inttypes.h before x264.h [-W#warnings]
-   40 | #  warning You must include stdint.h or inttypes.h before x264.h
-      |    ^
-/tmp/ffconf.kg9ppjDB/test.c:3:2: error: "unsatisfied condition: X264_MPEG2"
-    3 | #error "unsatisfied condition: X264_MPEG2"
-      |  ^
-1 warning and 1 error generated.
-require_pkg_config libx265 x265 x265.h x265_api_get
-check_pkg_config libx265 x265 x265.h x265_api_get
-test_pkg_config libx265 x265 x265.h x265_api_get
-/usr/bin/pkg-config --exists --print-errors x265
-check_func_headers x265.h x265_api_get -I/tmp/ffbuild/install/include -L/tmp/ffbuild/install/lib -l:libx265.a -lstdc++ -lm -ldl
-test_ld cc -I/tmp/ffbuild/install/include -L/tmp/ffbuild/install/lib -l:libx265.a -lstdc++ -lm -ldl
-test_cc -I/tmp/ffbuild/install/include -L/tmp/ffbuild/install/lib
-BEGIN /tmp/ffconf.kg9ppjDB/test.c
-    1	#include <x265.h>
-    2	#include <stdint.h>
-    3	long check_x265_api_get(void) { return (long) x265_api_get; }
-    4	int main(void) { int ret = 0;
-    5	 ret |= ((intptr_t)check_x265_api_get) & 0xFFFF;
-    6	return ret; }
-END /tmp/ffconf.kg9ppjDB/test.c
-/tmp/ffbuild/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang -D_ISOC11_SOURCE -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -Dstrtod=avpriv_strtod -DPIC -I/tmp/ffbuild/install/include -fPIC -std=c17 -fPIE -fomit-frame-pointer -fPIC -pthread -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/svt-av1 -DRTC_BUILD=0 -UEB_DLL -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -L/tmp/ffbuild/install/lib -c -o /tmp/ffconf.kg9ppjDB/test.o /tmp/ffconf.kg9ppjDB/test.c
-clang: warning: argument unused during compilation: '-L/tmp/ffbuild/install/lib' [-Wunused-command-line-argument]
-/tmp/ffbuild/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang -L/tmp/ffbuild/install/lib -lm -lz -ldl -Wl,--as-needed -Wl,-z,noexecstack -fPIE -pie -I/tmp/ffbuild/install/include -L/tmp/ffbuild/install/lib -o /tmp/ffconf.kg9ppjDB/test /tmp/ffconf.kg9ppjDB/test.o -l:libx265.a -lstdc++ -lm -ldl
-ld.lld: error: unable to find library -l:libx265.a
-clang: error: linker command failed with exit code 1 (use -v to see invocation)
-ERROR: x265 not found using pkg-config
+[ 81%] Building CXX object common/CMakeFiles/common.dir/temporalfilter.cpp.o
+[ 81%] Built target common
+[ 82%] Generating ssd-a.S.o
+[ 83%] Generating asm.S.o
+[ 85%] Generating blockcopy8.S.o
+[ 86%] Generating dct.S.o
+error: error: unknown target CPU 'armv8-a'
+unknown target CPU 'armv8-a'
+note: valid target CPU values are: nocona, core2, penryn, bonnell, atom, silvermont, slm, goldmont, goldmont-plus, tremont, nehalem, corei7, westmere, sandybridge, corei7-avx, ivybridge, core-avx-i, haswell, core-avx2, broadwell, skylake, skylake-avx512, skx, cascadelake, cooperlake, cannonlake, icelake-client, rocketlake, icelake-server, tigerlake, sapphirerapids, alderlake, raptorlake, meteorlake, arrowlake, arrowlake-s, lunarlake, gracemont, pantherlake, sierraforest, grandridge, graniterapids, graniterapids-d, emeraldrapids, clearwaterforest, knl, knm, k8, athlon64, athlon-fx, opteron, k8-sse3, athlon64-sse3, opteron-sse3, amdfam10, barcelona, btver1, btver2, bdver1, bdver2, bdver3, bdver4, znver1, znver2, znver3, znver4, x86-64, x86-64-v2, x86-64-v3, x86-64-v4
+note: valid target CPU values are: nocona, core2, penryn, bonnell, atom, silvermont, slm, goldmont, goldmont-plus, tremont, nehalem, corei7, westmere, sandybridge, corei7-avx, ivybridge, core-avx-i, haswell, core-avx2, broadwell, skylake, skylake-avx512, skx, cascadelake, cooperlake, cannonlake, icelake-client, rocketlake, icelake-server, tigerlake, sapphirerapids, alderlake, raptorlake, meteorlake, arrowlake, arrowlake-s, lunarlake, gracemont, pantherlake, sierraforest, grandridge, graniterapids, graniterapids-d, emeraldrapids, clearwaterforest, knl, knm, k8, athlon64, athlon-fx, opteron, k8-sse3, athlon64-sse3, opteron-sse3, amdfam10, barcelona, btver1, btver2, bdver1, bdver2, bdver3, bdver4, znver1, znver2, znver3, znver4, x86-64, x86-64-v2, x86-64-v3, x86-64-v4
+error: unknown target CPU 'armv8-a'
+note: valid target CPU values are: nocona, core2, penryn, bonnell, atom, silvermont, slm, goldmont, goldmont-plus, tremont, nehalem, corei7, westmere, sandybridge, corei7-avx, ivybridge, core-avx-i, haswell, core-avx2, broadwell, skylake, skylake-avx512, skx, cascadelake, cooperlake, cannonlake, icelake-client, rocketlake, icelake-server, tigerlake, sapphirerapids, alderlake, raptorlake, meteorlake, arrowlake, arrowlake-s, lunarlake, gracemont, pantherlake, sierraforest, grandridge, graniterapids, graniterapids-d, emeraldrapids, clearwaterforest, knl, knm, k8, athlon64, athlon-fx, opteron, k8-sse3, athlon64-sse3, opteron-sse3, amdfam10, barcelona, btver1, btver2, bdver1, bdver2, bdver3, bdver4, znver1, znver2, znver3, znver4, x86-64, x86-64-v2, x86-64-v3, x86-64-v4
+error: unknown target CPU 'armv8-a'
+note: valid target CPU values are: nocona, core2, penryn, bonnell, atom, silvermont, slm, goldmont, goldmont-plus, tremont, nehalem, corei7, westmere, sandybridge, corei7-avx, ivybridge, core-avx-i, haswell, core-avx2, broadwell, skylake, skylake-avx512, skx, cascadelake, cooperlake, cannonlake, icelake-client, rocketlake, icelake-server, tigerlake, sapphirerapids, alderlake, raptorlake, meteorlake, arrowlake, arrowlake-s, lunarlake, gracemont, pantherlake, sierraforest, grandridge, graniterapids, graniterapids-d, emeraldrapids, clearwaterforest, knl, knm, k8, athlon64, athlon-fx, opteron, k8-sse3, athlon64-sse3, opteron-sse3, amdfam10, barcelona, btver1, btver2, bdver1, bdver2, bdver3, bdver4, znver1, znver2, znver3, znver4, x86-64, x86-64-v2, x86-64-v3, x86-64-v4
+make[2]: *** [CMakeFiles/x265-static.dir/build.make:110: ssd-a.S.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+make[2]: *** [CMakeFiles/x265-static.dir/build.make:74: asm.S.o] Error 1
+make[2]: *** [CMakeFiles/x265-static.dir/build.make:106: blockcopy8.S.o] Error 1
+make[2]: *** [CMakeFiles/x265-static.dir/build.make:122: dct.S.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:134: CMakeFiles/x265-static.dir/all] Error 2
+make: *** [Makefile:136: all] Error 2
+x265 headers installed
+=== x265 .a files ===
+=== PREFIX lib ===
+-rw-r--r-- 1 runner runner 2139598 May 24 20:24 /tmp/ffbuild/install/lib/libx264.a
+FATAL: libx265.a not found anywhere!
 Error: Process completed with exit code 1.

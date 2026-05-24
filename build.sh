@@ -102,8 +102,8 @@ cd $SRC
 if [ ! -f x265_done ]; then
     rm -rf x265
     clone_or_fail https://bitbucket.org/multicoreware/x265_git.git x265 x265
-    mkdir -p x265/build
-    cd x265/build
+    mkdir -p build
+    cd build
     cmake ../source \
         -DCMAKE_SYSTEM_NAME=Android \
         -DCMAKE_ANDROID_NDK=$NDK_ROOT \
@@ -124,8 +124,8 @@ cd $SRC
 if [ ! -f svtav1_done ]; then
     rm -rf svt-av1
     clone_or_fail https://gitlab.com/AOMediaCodec/SVT-AV1.git svt-av1 SVT-AV1
-    mkdir -p svt-av1/build
-    cd svt-av1/build
+    mkdir -p build
+    cd build
     cmake .. \
         -DCMAKE_SYSTEM_NAME=Android \
         -DCMAKE_ANDROID_NDK=$NDK_ROOT \
@@ -223,8 +223,8 @@ cd $SRC
 if [ ! -f aom_done ]; then
     rm -rf aom
     clone_or_fail https://aomedia.googlesource.com/aom aom aom
-    mkdir -p aom/build
-    cd aom/build
+    mkdir -p build
+    cd build
     cmake .. \
         -DCMAKE_SYSTEM_NAME=Android \
         -DCMAKE_ANDROID_NDK=$NDK_ROOT \

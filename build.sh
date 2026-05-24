@@ -34,12 +34,12 @@ $CC --version | head -1
 echo "CC=$CC"
 echo "SYSROOT=$SYSROOT"
 
-# ---- NDK Download (cached) ----
+# ---- NDK Download ----
 mkdir -p $BUILD_ROOT
 if [ ! -d "$NDK_ROOT" ]; then
     echo "=== Downloading Android NDK r27c ==="
     cd $BUILD_ROOT
-    wget -q https://dl.google.com/android/repository/android-ndk-r27c-linux.zip -O ndk.zip
+    wget -q --timeout=300 https://dl.google.com/android/repository/android-ndk-r27c-linux.zip -O ndk.zip
     unzip -q ndk.zip
     mv android-ndk-r27c $NDK_ROOT
     rm ndk.zip
@@ -48,12 +48,28 @@ fi
 
 mkdir -p $SRC $PREFIX
 
+# ---- helper: clone or fail ----
+clone_or_fail() {
+    local url=$1 dir=$2 name=$3
+    echo "  cloning $name..."
+    git clone --depth 1 "$url" "$dir" || { echo "FATAL: clone failed for $name ($url)"; exit 1; }
+    cd "$dir" || { echo "FATAL: cd $dir failed"; exit 1; }
+}
+
+# ---- helper: download and extract tarball ----
+fetch_tar() {
+    local url=$1 name=$2
+    echo "  downloading $name..."
+    wget -q --timeout=300 "$url" -O "$name.tar.gz" || { echo "FATAL: download $name failed"; exit 1; }
+    tar xzf "$name.tar.gz" || { echo "FATAL: extract $name failed"; exit 1; }
+    rm "$name.tar.gz"
+}
+
 # ==================== EXTERNAL LIBS ====================
 
 build_lib() {
-    local name=$1
     echo ""
-    echo "========== BUILDING $name =========="
+    echo "========== BUILDING $1 =========="
 }
 
 # --- x264 ---
@@ -61,13 +77,12 @@ build_lib x264
 cd $SRC
 if [ ! -f x264_done ]; then
     rm -rf x264
-    git clone --depth 1 https://code.videolan.org/videolan/x264.git x264 2>/dev/null || true
-    cd x264
+    clone_or_fail https://code.videolan.org/videolan/x264.git x264 x264
     ./configure \
         --host=$TARGET --cross-prefix=${TARGET}${API}- \
         --sysroot=$SYSROOT \
         --enable-static --enable-pic --disable-cli --disable-opencl \
-        --prefix=$PREFIX 2>&1 | tail -5
+        --prefix=$PREFIX
     make $MAKEFLAGS && make install
     touch $SRC/x264_done
 fi
@@ -78,7 +93,7 @@ build_lib x265
 cd $SRC
 if [ ! -f x265_done ]; then
     rm -rf x265
-    git clone --depth 1 --branch master https://bitbucket.org/multicoreware/x265_git.git x265 2>/dev/null || true
+    clone_or_fail https://bitbucket.org/multicoreware/x265_git.git x265 x265
     mkdir -p x265/build
     cd x265/build
     cmake ../source \
@@ -89,8 +104,7 @@ if [ ! -f x265_done ]; then
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=$PREFIX \
         -DENABLE_SHARED=OFF -DENABLE_CLI=OFF \
-        -DCMAKE_ANDROID_STANDALONE_TOOLCHAIN= \
-        2>&1 | tail -5
+        -DCMAKE_ANDROID_STANDALONE_TOOLCHAIN=
     make $MAKEFLAGS && make install
     touch $SRC/x265_done
 fi
@@ -101,7 +115,7 @@ build_lib SVT-AV1
 cd $SRC
 if [ ! -f svtav1_done ]; then
     rm -rf svt-av1
-    git clone --depth 1 https://gitlab.com/AOMediaCodec/SVT-AV1.git svt-av1 2>/dev/null || true
+    clone_or_fail https://gitlab.com/AOMediaCodec/SVT-AV1.git svt-av1 SVT-AV1
     mkdir -p svt-av1/build
     cd svt-av1/build
     cmake .. \
@@ -112,8 +126,7 @@ if [ ! -f svtav1_done ]; then
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=$PREFIX \
         -DBUILD_SHARED_LIBS=OFF \
-        -DBUILD_ENC=ON -DBUILD_DEC=OFF -DBUILD_TESTING=OFF -DBUILD_APPS=OFF \
-        2>&1 | tail -5
+        -DBUILD_ENC=ON -DBUILD_DEC=OFF -DBUILD_TESTING=OFF -DBUILD_APPS=OFF
     make $MAKEFLAGS && make install
     touch $SRC/svtav1_done
 fi
@@ -124,11 +137,10 @@ build_lib opus
 cd $SRC
 if [ ! -f opus_done ]; then
     rm -rf opus
-    git clone --depth 1 https://github.com/xiph/opus.git opus 2>/dev/null || true
-    cd opus
-    ./autogen.sh 2>/dev/null || true
+    clone_or_fail https://github.com/xiph/opus.git opus opus
+    ./autogen.sh
     ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
-        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB 2>&1 | tail -5
+        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
     make $MAKEFLAGS && make install
     touch $SRC/opus_done
 fi
@@ -139,11 +151,10 @@ build_lib ogg
 cd $SRC
 if [ ! -f ogg_done ]; then
     rm -rf ogg
-    git clone --depth 1 https://github.com/xiph/ogg.git ogg 2>/dev/null || true
-    cd ogg
-    ./autogen.sh 2>/dev/null || true
+    clone_or_fail https://github.com/xiph/ogg.git ogg ogg
+    ./autogen.sh
     ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
-        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB 2>&1 | tail -5
+        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
     make $MAKEFLAGS && make install
     touch $SRC/ogg_done
 fi
@@ -154,28 +165,30 @@ build_lib vorbis
 cd $SRC
 if [ ! -f vorbis_done ]; then
     rm -rf vorbis
-    git clone --depth 1 https://github.com/xiph/vorbis.git vorbis 2>/dev/null || true
-    cd vorbis
-    ./autogen.sh 2>/dev/null || true
+    clone_or_fail https://github.com/xiph/vorbis.git vorbis vorbis
+    ./autogen.sh
     ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
         --with-ogg=$PREFIX \
-        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB 2>&1 | tail -5
+        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
     make $MAKEFLAGS && make install
     touch $SRC/vorbis_done
 fi
 echo "vorbis DONE"
 
-# --- mp3lame ---
+# --- mp3lame (SourceForge tarball, more reliable than git clone) ---
 build_lib mp3lame
 cd $SRC
 if [ ! -f lame_done ]; then
-    rm -rf lame
-    git clone --depth 1 https://github.com/nu774/lame.git lame 2>/dev/null || true
-    cd lame
-    autoreconf -fi 2>/dev/null || true
+    rm -rf lame-3.100
+    echo "  downloading LAME 3.100..."
+    wget -q --timeout=300 "https://sourceforge.net/projects/lame/files/lame/3.100/lame-3.100.tar.gz/download" -O lame.tar.gz || \
+    wget -q --timeout=300 "https://netix.dl.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz" -O lame.tar.gz || \
+    { echo "FATAL: failed to download LAME"; exit 1; }
+    tar xzf lame.tar.gz && rm lame.tar.gz
+    cd lame-3.100
     ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
         --disable-frontend \
-        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB 2>&1 | tail -5
+        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
     make $MAKEFLAGS && make install
     touch $SRC/lame_done
 fi
@@ -186,13 +199,11 @@ build_lib vpx
 cd $SRC
 if [ ! -f vpx_done ]; then
     rm -rf libvpx
-    git clone --depth 1 https://chromium.googlesource.com/webm/libvpx.git libvpx 2>/dev/null || true
-    cd libvpx
+    clone_or_fail https://chromium.googlesource.com/webm/libvpx libvpx libvpx
     ./configure --target=arm64-android-gcc --prefix=$PREFIX \
         --enable-static --disable-shared --disable-examples --disable-tools --disable-docs \
         --disable-unit-tests --as=yasm \
-        --extra-cflags="-fPIC" \
-        2>&1 | tail -5
+        --extra-cflags="-fPIC"
     make $MAKEFLAGS && make install
     touch $SRC/vpx_done
 fi
@@ -203,7 +214,7 @@ build_lib aom
 cd $SRC
 if [ ! -f aom_done ]; then
     rm -rf aom
-    git clone --depth 1 https://aomedia.googlesource.com/aom aom 2>/dev/null || true
+    clone_or_fail https://aomedia.googlesource.com/aom aom aom
     mkdir -p aom/build
     cd aom/build
     cmake .. \
@@ -214,8 +225,7 @@ if [ ! -f aom_done ]; then
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=$PREFIX \
         -DBUILD_SHARED_LIBS=OFF \
-        -DENABLE_TESTS=OFF -DENABLE_DOCS=OFF -DENABLE_TESTDATA=OFF \
-        2>&1 | tail -5
+        -DENABLE_TESTS=OFF -DENABLE_DOCS=OFF -DENABLE_TESTDATA=OFF
     make $MAKEFLAGS && make install
     touch $SRC/aom_done
 fi
@@ -229,7 +239,7 @@ FFMPEG_VER=8.1.1
 if [ ! -f ffmpeg_done ]; then
     rm -rf ffmpeg-$FFMPEG_VER
     if [ ! -f ffmpeg-$FFMPEG_VER.tar.xz ]; then
-        wget -q https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VER.tar.xz
+        wget -q --timeout=300 https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VER.tar.xz
     fi
     tar xf ffmpeg-$FFMPEG_VER.tar.xz
     cd ffmpeg-$FFMPEG_VER
@@ -254,8 +264,7 @@ if [ ! -f ffmpeg_done ]; then
         --disable-ffplay --disable-ffprobe --disable-avdevice \
         --disable-doc --disable-debug --disable-postproc \
         --pkg-config-flags=--static \
-        --prefix=$PREFIX \
-        2>&1 | tail -20
+        --prefix=$PREFIX 2>&1 | tail -20
 
     echo "=== Config done, starting make ==="
     make $MAKEFLAGS 2>&1 | tail -10
@@ -270,24 +279,10 @@ echo ""
 echo "========== MERGING INTO SINGLE libffmpeg.so =========="
 
 cd $PREFIX/lib
-
-# List what we have
 echo "Available static libs:"
-ls -la *.a 2>/dev/null
+ls -lh *.a 2>/dev/null || true
 
-# Merge all static libs into one shared library
-# Order matters: FFmpeg libs first, then external libs (dependencies last)
-$CC -shared -o libffmpeg.so \
-    -Wl,--whole-archive \
-    libavcodec.a libavformat.a libavutil.a libavfilter.a \
-    libswresample.a libswscale.a \
-    libx264.a libx265.a libSvtAv1Enc.a libaom.a \
-    libopus.a libmp3lame.a libvorbis.a libogg.a libvpx.a \
-    -Wl,--no-whole-archive \
-    -lz -lm -ldl -llog -landroid -lmediandk \
-    -static-libstdc++ \
-    -Wl,-soname,libffmpeg.so \
-    -Wl,--version-script=$PREFIX/lib/libavcodec.ver 2>/dev/null || \
+echo "=== Linking libffmpeg.so ==="
 $CC -shared -o libffmpeg.so \
     -Wl,--whole-archive \
     libavcodec.a libavformat.a libavutil.a libavfilter.a \

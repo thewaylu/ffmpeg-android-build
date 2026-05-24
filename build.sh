@@ -111,9 +111,8 @@ if [ ! -f x265_done ]; then
         -DCMAKE_ANDROID_API=$API \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=$PREFIX \
-        -DCMAKE_ASM_COMPILER=${CC} \
-        -DCMAKE_ASM_FLAGS="--target=${TARGET} -march=armv8-a" \
-        -DENABLE_SHARED=OFF -DENABLE_CLI=OFF
+        -DENABLE_SHARED=OFF -DENABLE_CLI=OFF \
+        -DENABLE_ASSEMBLY=OFF
     make $MAKEFLAGS && make install
     # x265 cmake doesn't install headers, do it manually
     cp ../source/x265.h $PREFIX/include/

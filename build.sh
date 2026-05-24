@@ -252,10 +252,21 @@ if [ ! -f ffmpeg_done ]; then
     tar xf ffmpeg-$FFMPEG_VER.tar.xz
     cd ffmpeg-$FFMPEG_VER
 
-    export PKG_CONFIG_LIBDIR=$PREFIX/lib/pkgconfig
-    export PKG_CONFIG_PATH=
+    export PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig:$PREFIX/share/pkgconfig
     export CFLAGS="-I$PREFIX/include -fPIC"
     export LDFLAGS="-L$PREFIX/lib -lm -lz -ldl"
+
+    echo "=== PKG-CONFIG DEBUG ==="
+    which pkg-config
+    echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
+    ls -la $PREFIX/lib/pkgconfig/*.pc 2>&1 || echo "NO .pc files!"
+    echo "--- aom ---"
+    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion aom 2>&1 || true
+    echo "--- x264 ---"
+    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion x264 2>&1 || true
+    echo "--- x265 ---"
+    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion x265 2>&1 || true
+    echo "=== END DEBUG ==="
 
     ./configure \
         --cross-prefix=${TARGET}${API}- \

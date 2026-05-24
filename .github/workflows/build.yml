@@ -1,0 +1,31 @@
+name: Build FFmpeg Static for Android
+
+on:
+  push:
+  workflow_dispatch:   # allow manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            autoconf automake libtool cmake ninja-build \
+            nasm yasm pkg-config wget git unzip xz-utils \
+            meson             # for meson build (dav1d etc)
+
+      - name: Build
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libffmpeg-android-arm64
+          path: /tmp/ffbuild/install/lib/libffmpeg.so

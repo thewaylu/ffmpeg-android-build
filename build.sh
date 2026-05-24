@@ -307,7 +307,7 @@ if [ ! -f ffmpeg_done ]; then
 
     export PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig:$PREFIX/share/pkgconfig
     export CFLAGS="-I$PREFIX/include -fPIC -DPIC"
-    export LDFLAGS="-L$PREFIX/lib -lm -lz -ldl"
+    export LDFLAGS="-L$PREFIX/lib -lm -lz -ldl -static-libstdc++"
     export ASFLAGS="-DPIC"
 
     echo "=== PKG-CONFIG DEBUG ==="
@@ -369,7 +369,7 @@ echo "========== Creating standalone ffmpeg executable =========="
 
 # ffmpeg binary (built by make install) already has ALL libs statically linked
 # Just rename to libffmpeg.so for APK compatibility
-$STRIP --strip-all $PREFIX/bin/ffmpeg
+$STRIP --strip-unneeded $PREFIX/bin/ffmpeg
 cp $PREFIX/bin/ffmpeg $PREFIX/lib/libffmpeg.so
 
 echo ""

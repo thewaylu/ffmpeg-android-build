@@ -116,6 +116,20 @@ if [ ! -f x265_done ]; then
     make $MAKEFLAGS && make install
     touch $SRC/x265_done
 fi
+# x265 cmake doesn't create .pc, do it manually
+cat > $PREFIX/lib/pkgconfig/x265.pc << EOF
+prefix=$PREFIX
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: x265
+Description: H.265/HEVC video encoder
+Version: 4.1
+Libs: -L\${libdir} -lx265
+Libs.private: -lstdc++ -lm -ldl -lpthread
+Cflags: -I\${includedir}
+EOF
 echo "x265 DONE"
 
 # --- SVT-AV1 ---
@@ -201,6 +215,20 @@ if [ ! -f lame_done ]; then
     touch $SRC/lame_done
 fi
 echo "mp3lame DONE"
+
+# LAME doesn't create .pc, do it manually
+cat > $PREFIX/lib/pkgconfig/libmp3lame.pc << EOF
+prefix=$PREFIX
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: libmp3lame
+Description: MP3 encoding library
+Version: 3.100
+Libs: -L\${libdir} -lmp3lame
+Cflags: -I\${includedir}
+EOF
 
 # --- libvpx ---
 build_lib vpx

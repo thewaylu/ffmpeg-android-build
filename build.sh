@@ -48,6 +48,14 @@ fi
 
 mkdir -p $SRC $PREFIX
 
+# ---- Create missing symlinks for cross-prefix tools (NDK r27+ only has llvm-* variants)
+for tool in strings strip ar nm ranlib readelf objdump addr2line; do
+    if [ -f "$TOOLCHAIN/bin/llvm-$tool" ] && [ ! -f "$TOOLCHAIN/bin/${TARGET}${API}-$tool" ]; then
+        ln -sf "llvm-$tool" "$TOOLCHAIN/bin/${TARGET}${API}-$tool"
+    fi
+done
+echo "Tool symlinks created."
+
 # ---- helper: clone or fail ----
 clone_or_fail() {
     local url=$1 dir=$2 name=$3

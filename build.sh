@@ -362,36 +362,22 @@ if [ ! -f ffmpeg_done ]; then
 fi
 echo "FFmpeg DONE"
 
-# ==================== MERGE INTO SINGLE .so ====================
+# ==================== CREATE standalone EXECUTABLE ====================
 
 echo ""
-echo "========== MERGING INTO SINGLE libffmpeg.so =========="
+echo "========== Creating standalone ffmpeg executable =========="
 
-cd $PREFIX/lib
-echo "Available static libs:"
-ls -lh *.a 2>/dev/null || true
-
-echo "=== Linking libffmpeg.so ==="
-$CC -shared -o libffmpeg.so \
-    -Wl,--whole-archive \
-    libavcodec.a libavformat.a libavutil.a libavfilter.a \
-    libswresample.a libswscale.a \
-    libx264.a libx265.a libSvtAv1Enc.a libaom.a \
-    libopus.a libmp3lame.a libvorbis.a libogg.a libvpx.a \
-    -Wl,--no-whole-archive \
-    -lz -lm -ldl -llog -landroid -lmediandk \
-    -static-libstdc++ \
-    -Wl,-soname,libffmpeg.so
-
-echo "=== Stripping ==="
-$STRIP --strip-unneeded libffmpeg.so
+# ffmpeg binary (built by make install) already has ALL libs statically linked
+# Just rename to libffmpeg.so for APK compatibility
+$STRIP --strip-all $PREFIX/bin/ffmpeg
+cp $PREFIX/bin/ffmpeg $PREFIX/lib/libffmpeg.so
 
 echo ""
 echo "=== RESULT ==="
-ls -lh libffmpeg.so
+ls -lh $PREFIX/lib/libffmpeg.so
 echo ""
 echo "=== ENCODERS ==="
-LD_LIBRARY_PATH=$PREFIX/lib $PREFIX/bin/ffmpeg -encoders 2>/dev/null | grep -E 'libx264|libx265|svt_av1|libaom|libopus|libmp3lame|libvorbis|libvpx' || true
+$PREFIX/bin/ffmpeg -encoders 2>/dev/null | grep -E 'libx264|libx265|svt_av1|libaom|libopus|libmp3lame|libvorbis|libvpx' || true
 
 echo ""
 echo "=== BUILD COMPLETE ==="

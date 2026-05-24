@@ -299,17 +299,7 @@ if [ ! -f ffmpeg_done ]; then
         --cross-prefix=${TARGET}${API}- \
         --cc=${CC} --cxx=${CXX} --ld=${CC} \
         --ar=${AR} --nm=${NM} --ranlib=${RANLIB} \
-        --enable-cross-compile --target-os=android --arch=aarch64 \
-        --sysroot=$SYSROOT \
-        --enable-gpl --enable-version3 \
-        --enable-libx264 --enable-libx265 --enable-libvpx \
-        --enable-libopus --enable-libmp3lame --enable-libvorbis \
-        --enable-libaom --enable-libsvtav1 \
-        --enable-mediacodec --enable-jni \
-        --enable-small \
-        --enable-static --disable-shared \
-        --disable-ffplay --disable-ffprobe --disable-avdevice \
-        --disable-doc --disable-debug \
+        --pkg-config=/usr/bin/pkg-config \
         --pkg-config-flags=--static \
         --prefix=$PREFIX
 

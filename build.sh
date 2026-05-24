@@ -306,8 +306,9 @@ if [ ! -f ffmpeg_done ]; then
     cd ffmpeg-$FFMPEG_VER
 
     export PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig:$PREFIX/share/pkgconfig
-    export CFLAGS="-I$PREFIX/include -fPIC"
+    export CFLAGS="-I$PREFIX/include -fPIC -DPIC"
     export LDFLAGS="-L$PREFIX/lib -lm -lz -ldl"
+    export ASFLAGS="-DPIC"
 
     echo "=== PKG-CONFIG DEBUG ==="
     which pkg-config
@@ -331,7 +332,6 @@ if [ ! -f ffmpeg_done ]; then
         --pkg-config=/usr/bin/pkg-config \
         --pkg-config-flags=--static \
         --extra-cflags="-fPIC -DPIC" \
-        --extra-asflags="-DPIC" \
         --enable-cross-compile --target-os=android --arch=aarch64 \
         --enable-gpl --enable-version3 \
         --enable-libx264 --enable-libx265 --enable-libvpx \

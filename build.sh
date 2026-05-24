@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -eo pipefail
 # ============================================
 # FFmpeg Static Merge Build for Android ARM64
 # Produces a single libffmpeg.so with:
@@ -270,12 +270,14 @@ if [ ! -f ffmpeg_done ]; then
         --enable-small \
         --enable-static --disable-shared \
         --disable-ffplay --disable-ffprobe --disable-avdevice \
-        --disable-doc --disable-debug --disable-postproc \
+        --disable-doc --disable-debug \
         --pkg-config-flags=--static \
-        --prefix=$PREFIX 2>&1 | tail -20
+        --prefix=$PREFIX
 
+    echo "=== Config exit code: $? ==="
     echo "=== Config done, starting make ==="
-    make $MAKEFLAGS 2>&1 | tail -10
+    make $MAKEFLAGS
+    echo "=== Make exit code: $? ==="
     make install
     touch $SRC/ffmpeg_done
 fi

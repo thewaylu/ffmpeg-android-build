@@ -1,7 +1,7 @@
 Name: x265
 Description: H.265/HEVC video encoder
 Version: 4.1
-Libs: -L${libdir} -lx265
+Libs: -L${libdir} -l:libx265.a
 Libs.private: -lstdc++ -lm -ldl
 Cflags: -I${includedir}
 === END DEBUG ===
@@ -18,9 +18,9 @@ solve the problem.
     2	#if !(X264_BUILD >= 163)
     3	#error "unsatisfied condition: X264_BUILD >= 163"
     4	#endif
-END /tmp/ffconf.cddn7LIs/test.c
-/tmp/ffbuild/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang -D_ISOC11_SOURCE -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -Dstrtod=avpriv_strtod -DPIC -I/tmp/ffbuild/install/include -fPIC -std=c17 -fPIE -fomit-frame-pointer -fPIC -pthread -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/svt-av1 -DRTC_BUILD=0 -UEB_DLL -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -E -o /tmp/ffconf.cddn7LIs/test.o /tmp/ffconf.cddn7LIs/test.c
-In file included from /tmp/ffconf.cddn7LIs/test.c:1:
+END /tmp/ffconf.kg9ppjDB/test.c
+/tmp/ffbuild/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang -D_ISOC11_SOURCE -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -Dstrtod=avpriv_strtod -DPIC -I/tmp/ffbuild/install/include -fPIC -std=c17 -fPIE -fomit-frame-pointer -fPIC -pthread -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/svt-av1 -DRTC_BUILD=0 -UEB_DLL -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -E -o /tmp/ffconf.kg9ppjDB/test.o /tmp/ffconf.kg9ppjDB/test.c
+In file included from /tmp/ffconf.kg9ppjDB/test.c:1:
 /tmp/ffbuild/install/include/x264.h:40:4: warning: You must include stdint.h or inttypes.h before x264.h [-W#warnings]
    40 | #  warning You must include stdint.h or inttypes.h before x264.h
       |    ^
@@ -28,18 +28,18 @@ In file included from /tmp/ffconf.cddn7LIs/test.c:1:
 check_cpp_condition libx262 x264.h X264_MPEG2
 test_cpp_condition x264.h X264_MPEG2
 test_cpp
-BEGIN /tmp/ffconf.cddn7LIs/test.c
+BEGIN /tmp/ffconf.kg9ppjDB/test.c
     1	#include <x264.h>
     2	#if !(X264_MPEG2)
     3	#error "unsatisfied condition: X264_MPEG2"
     4	#endif
-END /tmp/ffconf.cddn7LIs/test.c
-/tmp/ffbuild/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang -D_ISOC11_SOURCE -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -Dstrtod=avpriv_strtod -DPIC -I/tmp/ffbuild/install/include -fPIC -std=c17 -fPIE -fomit-frame-pointer -fPIC -pthread -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/svt-av1 -DRTC_BUILD=0 -UEB_DLL -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -E -o /tmp/ffconf.cddn7LIs/test.o /tmp/ffconf.cddn7LIs/test.c
-In file included from /tmp/ffconf.cddn7LIs/test.c:1:
+END /tmp/ffconf.kg9ppjDB/test.c
+/tmp/ffbuild/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang -D_ISOC11_SOURCE -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -Dstrtod=avpriv_strtod -DPIC -I/tmp/ffbuild/install/include -fPIC -std=c17 -fPIE -fomit-frame-pointer -fPIC -pthread -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/svt-av1 -DRTC_BUILD=0 -UEB_DLL -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -E -o /tmp/ffconf.kg9ppjDB/test.o /tmp/ffconf.kg9ppjDB/test.c
+In file included from /tmp/ffconf.kg9ppjDB/test.c:1:
 /tmp/ffbuild/install/include/x264.h:40:4: warning: You must include stdint.h or inttypes.h before x264.h [-W#warnings]
    40 | #  warning You must include stdint.h or inttypes.h before x264.h
       |    ^
-/tmp/ffconf.cddn7LIs/test.c:3:2: error: "unsatisfied condition: X264_MPEG2"
+/tmp/ffconf.kg9ppjDB/test.c:3:2: error: "unsatisfied condition: X264_MPEG2"
     3 | #error "unsatisfied condition: X264_MPEG2"
       |  ^
 1 warning and 1 error generated.
@@ -47,21 +47,21 @@ require_pkg_config libx265 x265 x265.h x265_api_get
 check_pkg_config libx265 x265 x265.h x265_api_get
 test_pkg_config libx265 x265 x265.h x265_api_get
 /usr/bin/pkg-config --exists --print-errors x265
-check_func_headers x265.h x265_api_get -I/tmp/ffbuild/install/include -L/tmp/ffbuild/install/lib -lx265 -lstdc++ -lm -ldl
-test_ld cc -I/tmp/ffbuild/install/include -L/tmp/ffbuild/install/lib -lx265 -lstdc++ -lm -ldl
+check_func_headers x265.h x265_api_get -I/tmp/ffbuild/install/include -L/tmp/ffbuild/install/lib -l:libx265.a -lstdc++ -lm -ldl
+test_ld cc -I/tmp/ffbuild/install/include -L/tmp/ffbuild/install/lib -l:libx265.a -lstdc++ -lm -ldl
 test_cc -I/tmp/ffbuild/install/include -L/tmp/ffbuild/install/lib
-BEGIN /tmp/ffconf.cddn7LIs/test.c
+BEGIN /tmp/ffconf.kg9ppjDB/test.c
     1	#include <x265.h>
     2	#include <stdint.h>
     3	long check_x265_api_get(void) { return (long) x265_api_get; }
     4	int main(void) { int ret = 0;
     5	 ret |= ((intptr_t)check_x265_api_get) & 0xFFFF;
     6	return ret; }
-END /tmp/ffconf.cddn7LIs/test.c
-/tmp/ffbuild/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang -D_ISOC11_SOURCE -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -Dstrtod=avpriv_strtod -DPIC -I/tmp/ffbuild/install/include -fPIC -std=c17 -fPIE -fomit-frame-pointer -fPIC -pthread -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/svt-av1 -DRTC_BUILD=0 -UEB_DLL -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -L/tmp/ffbuild/install/lib -c -o /tmp/ffconf.cddn7LIs/test.o /tmp/ffconf.cddn7LIs/test.c
+END /tmp/ffconf.kg9ppjDB/test.c
+/tmp/ffbuild/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang -D_ISOC11_SOURCE -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -Dstrtod=avpriv_strtod -DPIC -I/tmp/ffbuild/install/include -fPIC -std=c17 -fPIE -fomit-frame-pointer -fPIC -pthread -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/opus -I/tmp/ffbuild/install/include/svt-av1 -DRTC_BUILD=0 -UEB_DLL -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -I/tmp/ffbuild/install/include -L/tmp/ffbuild/install/lib -c -o /tmp/ffconf.kg9ppjDB/test.o /tmp/ffconf.kg9ppjDB/test.c
 clang: warning: argument unused during compilation: '-L/tmp/ffbuild/install/lib' [-Wunused-command-line-argument]
-/tmp/ffbuild/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang -L/tmp/ffbuild/install/lib -lm -lz -ldl -Wl,--as-needed -Wl,-z,noexecstack -fPIE -pie -I/tmp/ffbuild/install/include -L/tmp/ffbuild/install/lib -o /tmp/ffconf.cddn7LIs/test /tmp/ffconf.cddn7LIs/test.o -lx265 -lstdc++ -lm -ldl
-ld.lld: error: unable to find library -lx265
+/tmp/ffbuild/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang -L/tmp/ffbuild/install/lib -lm -lz -ldl -Wl,--as-needed -Wl,-z,noexecstack -fPIE -pie -I/tmp/ffbuild/install/include -L/tmp/ffbuild/install/lib -o /tmp/ffconf.kg9ppjDB/test /tmp/ffconf.kg9ppjDB/test.o -l:libx265.a -lstdc++ -lm -ldl
+ld.lld: error: unable to find library -l:libx265.a
 clang: error: linker command failed with exit code 1 (use -v to see invocation)
 ERROR: x265 not found using pkg-config
-Error: Process completed with exit code 1
+Error: Process completed with exit code 1.

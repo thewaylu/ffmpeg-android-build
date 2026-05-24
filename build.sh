@@ -121,8 +121,25 @@ if [ ! -f x265_done ]; then
     touch $SRC/x265_done
 fi
 # x265 cmake doesn't create .pc, do it manually
-# Android has no separate libpthread (it's in libc)
-# Use full path to .a to bypass linker search issues
+# Ensure lib built and installed
+echo "=== x265 .a files ==="
+find $SRC/x265 -name "*.a" 2>/dev/null || echo "No .a found in build dir"
+echo "=== PREFIX lib ==="
+ls -la $PREFIX/lib/*.a 2>/dev/null || echo "No .a in PREFIX/lib"
+
+# If libx265.a not in PREFIX, find and copy it
+if [ ! -f $PREFIX/lib/libx265.a ]; then
+    LIB265=$(find $SRC/x265 -name "libx265.a" -type f 2>/dev/null | head -1)
+    if [ -n "$LIB265" ]; then
+        echo "Copying $LIB265 to $PREFIX/lib/"
+        cp "$LIB265" $PREFIX/lib/libx265.a
+    else
+        echo "FATAL: libx265.a not found anywhere!"
+        exit 1
+    fi
+fi
+
+# Use absolute path to avoid any linker search issues
 cat > $PREFIX/lib/pkgconfig/x265.pc << EOF
 prefix=$PREFIX
 exec_prefix=\${prefix}
@@ -132,16 +149,10 @@ includedir=\${prefix}/include
 Name: x265
 Description: H.265/HEVC video encoder
 Version: 4.1
-Libs: -L\${libdir} -l:libx265.a
+Libs: \${libdir}/libx265.a
 Libs.private: -lstdc++ -lm -ldl
 Cflags: -I\${includedir}
 EOF
-# Verify and if libx265.a missing, find & copy it
-if [ ! -f $PREFIX/lib/libx265.a ]; then
-    echo "WARN: libx265.a not installed by cmake, copying manually"
-    find $SRC/x265 -name "libx265*.a" -exec cp {} $PREFIX/lib/ \;
-fi
-ls -la $PREFIX/lib/libx265* 2>&1 || echo "FATAL: libx265.a not found"
 echo "x265 DONE"
 
 # --- SVT-AV1 ---

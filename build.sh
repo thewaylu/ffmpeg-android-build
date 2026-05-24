@@ -287,13 +287,12 @@ if [ ! -f ffmpeg_done ]; then
     echo "=== PKG-CONFIG DEBUG ==="
     which pkg-config
     echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
-    ls -la $PREFIX/lib/pkgconfig/*.pc 2>&1 || echo "NO .pc files!"
-    echo "--- aom ---"
-    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion aom 2>&1 || true
-    echo "--- x264 ---"
-    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion x264 2>&1 || true
-    echo "--- x265 ---"
-    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion x265 2>&1 || true
+    echo "--- aom static exists ---"
+    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --static --exists --print-errors 'aom >= 2.0.0' 2>&1 || true
+    echo "--- aom static libs ---"
+    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --static --libs aom 2>&1 || true
+    echo "--- aom.pc contents ---"
+    cat $PREFIX/lib/pkgconfig/aom.pc 2>&1 || true
     echo "=== END DEBUG ==="
 
     ./configure \

@@ -293,6 +293,10 @@ if [ ! -f ffmpeg_done ]; then
     PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --static --libs aom 2>&1 || true
     echo "--- aom.pc contents ---"
     cat $PREFIX/lib/pkgconfig/aom.pc 2>&1 || true
+    echo "--- x265 ---"
+    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion x265 2>&1 || true
+    echo "--- x265 static exists ---"
+    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --static --exists --print-errors 'x265 >= 0.0' 2>&1 || true
     echo "=== END DEBUG ==="
 
     ./configure \
@@ -300,7 +304,6 @@ if [ ! -f ffmpeg_done ]; then
         --cc=${CC} --cxx=${CXX} --ld=${CC} \
         --ar=${AR} --nm=${NM} --ranlib=${RANLIB} \
         --pkg-config=/usr/bin/pkg-config \
-        --pkg-config-flags=--static \
         --enable-cross-compile --target-os=android --arch=aarch64 \
         --sysroot=$SYSROOT \
         --enable-gpl --enable-version3 \

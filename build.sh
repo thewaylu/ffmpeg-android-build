@@ -313,7 +313,6 @@ if [ ! -f ffmpeg_done ]; then
         --pkg-config=/usr/bin/pkg-config \
         --pkg-config-flags=--static \
         --enable-cross-compile --target-os=android --arch=aarch64 \
-        --sysroot=$SYSROOT \
         --enable-gpl --enable-version3 \
         --enable-libx264 --enable-libx265 --enable-libvpx \
         --enable-libopus --enable-libmp3lame --enable-libvorbis \

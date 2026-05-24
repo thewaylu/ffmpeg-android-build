@@ -331,6 +331,7 @@ if [ ! -f ffmpeg_done ]; then
         --pkg-config=/usr/bin/pkg-config \
         --pkg-config-flags=--static \
         --extra-cflags="-fPIC -DPIC" \
+        --extra-asflags="-DPIC" \
         --enable-cross-compile --target-os=android --arch=aarch64 \
         --enable-gpl --enable-version3 \
         --enable-libx264 --enable-libx265 --enable-libvpx \

@@ -329,7 +329,7 @@ if [ ! -f fontconfig_done ]; then
     rm -rf fontconfig
     git clone --depth 1 https://gitlab.freedesktop.org/fontconfig/fontconfig.git fontconfig
     cd fontconfig
-    # meson cross file for Android
+    # meson cross file for Android - uses ABSOLUTE paths
     cat > cross.txt << XEOF
 [binaries]
 c = '${CC}'
@@ -344,6 +344,7 @@ pkg_config_path = '${PREFIX}/lib/pkgconfig'
 
 [properties]
 pkg_config_libdir = '${PREFIX}/lib/pkgconfig'
+freetype_includedir = '${PREFIX}/include/freetype2'
 
 [host_machine]
 system = 'android'
@@ -351,6 +352,12 @@ cpu_family = 'aarch64'
 cpu = 'aarch64'
 endian = 'little'
 XEOF
+    echo "=== cross.txt ==="
+    cat cross.txt
+    echo "=== checking freetype2.pc ==="
+    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion freetype2 2>&1 || echo "PKG_CONFIG FAILED"
+    echo "=== checking freetype headers ==="
+    ls -la $PREFIX/include/freetype2/freetype.h 2>&1 || echo "NO headers"
     PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig \
     PKG_CONFIG_LIBDIR=$PREFIX/lib/pkgconfig \
     meson setup build --prefix=$PREFIX --cross-file cross.txt \

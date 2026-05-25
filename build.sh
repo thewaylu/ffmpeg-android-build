@@ -326,6 +326,21 @@ if [ ! -f harfbuzz_done ]; then
 fi
 echo "harfbuzz DONE"
 
+# --- expat (needed by fontconfig) ---
+build_lib expat
+cd $SRC
+if [ ! -f expat_done ]; then
+    rm -rf expat
+    git clone --depth 1 https://github.com/libexpat/libexpat.git expat
+    cd expat/expat
+    ./buildconf.sh 2>/dev/null || true
+    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
+        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
+    make $MAKEFLAGS && make install
+    touch $SRC/expat_done
+fi
+echo "expat DONE"
+
 # --- fontconfig (meson) ---
 build_lib fontconfig
 cd $SRC
@@ -352,7 +367,9 @@ cpu = 'aarch64'
 endian = 'little'
 XEOF
     meson setup build --prefix=$PREFIX --cross-file cross.txt \
-        -Ddoc=disabled -Dtests=disabled -Dtools=disabled
+        -Ddoc=disabled -Dtests=disabled -Dtools=disabled \
+        -Dcache-build=disabled -Ddefault-hinting=light \
+        -Dpng=disabled
     ninja -C build install
     touch $SRC/fontconfig_done
 fi

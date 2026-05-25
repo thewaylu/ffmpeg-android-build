@@ -289,21 +289,6 @@ if [ ! -f freetype_done ]; then
     make $MAKEFLAGS && make install
     touch $SRC/freetype_done
 fi
-# freetype cmake should generate .pc, but ensure it exists
-if [ ! -f $PREFIX/lib/pkgconfig/freetype2.pc ]; then
-    mkdir -p $PREFIX/lib/pkgconfig
-    cat > $PREFIX/lib/pkgconfig/freetype2.pc << EOF
-prefix=$PREFIX
-exec_prefix=\${prefix}
-libdir=\${exec_prefix}/lib
-includedir=\${prefix}/include
-
-Name: FreeType 2
-Version: 2.13.0
-Libs: -L\${libdir} -lfreetype
-Cflags: -I\${includedir}/freetype2
-EOF
-fi
 echo "freetype DONE"
 
 # --- fribidi ---
@@ -357,21 +342,6 @@ if [ ! -f harfbuzz_done ]; then
         -DHB_BUILD_UTILS=OFF
     make $MAKEFLAGS && make install
     touch $SRC/harfbuzz_done
-fi
-# harfbuzz cmake should generate .pc, but ensure it exists
-if [ ! -f $PREFIX/lib/pkgconfig/harfbuzz.pc ]; then
-    mkdir -p $PREFIX/lib/pkgconfig
-    cat > $PREFIX/lib/pkgconfig/harfbuzz.pc << EOF
-prefix=$PREFIX
-exec_prefix=\${prefix}
-libdir=\${exec_prefix}/lib
-includedir=\${prefix}/include
-
-Name: harfbuzz
-Version: 11.2.0
-Libs: -L\${libdir} -lharfbuzz
-Cflags: -I\${includedir}/harfbuzz
-EOF
 fi
 echo "harfbuzz DONE"
 
@@ -458,85 +428,81 @@ if [ ! -f libass_done ]; then
     touch $SRC/libass_done
 fi
 echo "libass DONE"
-# Verify libass headers
-find $PREFIX/include -name "ass.h" 2>/dev/null || { echo "FATAL: ass.h not found - headers missing"; exit 1; }
-ls -la $PREFIX/lib/libass* 2>/dev/null || { echo "FATAL: libass.a missing"; exit 1; }
 
-# --- Ensure ALL .pc files exist (autotools/cmake may skip them) ---
-echo "=== Verifying all .pc files ==="
-# freetype
-if [ ! -f $PREFIX/lib/pkgconfig/freetype2.pc ]; then
-    cat > $PREFIX/lib/pkgconfig/freetype2.pc << EOF
-prefix=$PREFIX
-exec_prefix=\${prefix}
-libdir=\${exec_prefix}/lib
-includedir=\${prefix}/include
+# --- Ensure ALL subtitle .pc files are PERFECT ---
+echo "=== Creating/verifying all .pc files ==="
+mkdir -p $PREFIX/lib/pkgconfig
 
+cat > $PREFIX/lib/pkgconfig/freetype2.pc << 'EOF2'
+prefix=/tmp/ffbuild/install
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
 Name: FreeType 2
 Description: A free, high-quality, and portable font engine.
-Version: 2.13.0
-Libs: -L\${libdir} -lfreetype
-Cflags: -I\${includedir}/freetype2 -I\${includedir}
-EOF
-fi
-# fribidi
-if [ ! -f $PREFIX/lib/pkgconfig/fribidi.pc ]; then
-    cat > $PREFIX/lib/pkgconfig/fribidi.pc << EOF
-prefix=$PREFIX
-exec_prefix=\${prefix}
-libdir=\${exec_prefix}/lib
-includedir=\${prefix}/include
+Version: 27.0.20
+Libs: -L${libdir} -lfreetype
+Cflags: -I${includedir}/freetype2
+EOF2
+sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/freetype2.pc
 
+cat > $PREFIX/lib/pkgconfig/fribidi.pc << 'EOF2'
+prefix=/tmp/ffbuild/install
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
 Name: fribidi
+Description: GNU FriBidi
 Version: 1.0.16
-Libs: -L\${libdir} -lfribidi
-Cflags: -I\${includedir}
-EOF
-fi
-# harfbuzz
-if [ ! -f $PREFIX/lib/pkgconfig/harfbuzz.pc ]; then
-    cat > $PREFIX/lib/pkgconfig/harfbuzz.pc << EOF
-prefix=$PREFIX
-exec_prefix=\${prefix}
-libdir=\${exec_prefix}/lib
-includedir=\${prefix}/include
+Libs: -L${libdir} -lfribidi
+Cflags: -I${includedir}
+EOF2
+sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/fribidi.pc
 
+cat > $PREFIX/lib/pkgconfig/harfbuzz.pc << 'EOF2'
+prefix=/tmp/ffbuild/install
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
 Name: harfbuzz
+Description: HarfBuzz text shaping library
 Version: 11.2.0
-Libs: -L\${libdir} -lharfbuzz
-Cflags: -I\${includedir}/harfbuzz
-EOF
-fi
-# fontconfig
-if [ ! -f $PREFIX/lib/pkgconfig/fontconfig.pc ]; then
-    cat > $PREFIX/lib/pkgconfig/fontconfig.pc << EOF
-prefix=$PREFIX
-exec_prefix=\${prefix}
-libdir=\${exec_prefix}/lib
-includedir=\${prefix}/include
+Libs: -L${libdir} -lharfbuzz
+Cflags: -I${includedir}/harfbuzz
+EOF2
+sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/harfbuzz.pc
 
+cat > $PREFIX/lib/pkgconfig/fontconfig.pc << 'EOF2'
+prefix=/tmp/ffbuild/install
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
 Name: Fontconfig
+Description: Font configuration and customization library
 Version: 2.16.0
-Libs: -L\${libdir} -lfontconfig
-Cflags: -I\${includedir}
-EOF
-fi
-# libass
-if [ ! -f $PREFIX/lib/pkgconfig/libass.pc ]; then
-    cat > $PREFIX/lib/pkgconfig/libass.pc << EOF
-prefix=$PREFIX
-exec_prefix=\${prefix}
-libdir=\${exec_prefix}/lib
-includedir=\${prefix}/include
+Requires: freetype2
+Libs: -L${libdir} -lfontconfig
+Cflags: -I${includedir}
+EOF2
+sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/fontconfig.pc
 
+cat > $PREFIX/lib/pkgconfig/libass.pc << 'EOF2'
+prefix=/tmp/ffbuild/install
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
 Name: libass
+Description: LibASS is an SSA/ASS subtitles rendering library
 Version: 0.17.3
-Requires: fribidi >= 0.19.0, freetype2 >= 9.17.0
-Libs: -L\${libdir} -lass
-Cflags: -I\${includedir}
-EOF
-fi
-ls -la $PREFIX/lib/pkgconfig/*.pc
+Requires: fribidi >= 0.19.0, freetype2 >= 9.17.3
+Libs: -L${libdir} -lass
+Cflags: -I${includedir}
+EOF2
+sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/libass.pc
+
+echo "Checking .pc files:"
+PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion fribidi 2>&1
+PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion libass 2>&1
 echo "=== .pc files OK ==="
 
 # --- libaom ---

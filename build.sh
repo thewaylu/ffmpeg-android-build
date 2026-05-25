@@ -194,8 +194,7 @@ if [ ! -f freetype_done ]; then
         -DCMAKE_ANDROID_API=$API \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=$PREFIX \
-        -DBUILD_SHARED_LIBS=OFF \
-        -DFT_DISABLE_PNG=ON
+        -DBUILD_SHARED_LIBS=OFF
     make $MAKEFLAGS && make install
     touch $SRC/freetype_done
 fi
@@ -242,6 +241,20 @@ Libs: -L\${libdir} -lfribidi
 Cflags: -I\${includedir}
 EOF
 echo "fribidi DONE"
+
+# --- libpng (needed by freetype for PNG font glyphs) ---
+build_lib libpng
+cd $SRC
+if [ ! -f libpng_done ]; then
+    rm -rf libpng
+    git clone --depth 1 https://github.com/pnggroup/libpng.git libpng
+    cd libpng
+    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
+        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
+    make $MAKEFLAGS && make install
+    touch $SRC/libpng_done
+fi
+echo "libpng DONE"
 
 # --- harfbuzz (cmake, needs freetype) ---
 build_lib harfbuzz

@@ -284,6 +284,8 @@ if [ ! -f freetype_done ]; then
     touch $SRC/freetype_done
 fi
 echo "freetype DONE"
+# verify freetype .pc exists
+ls -la $PREFIX/lib/pkgconfig/freetype* 2>/dev/null || echo "WARN: no freetype.pc"
 
 # --- fribidi ---
 build_lib fribidi
@@ -370,6 +372,7 @@ cpu_family = 'aarch64'
 cpu = 'aarch64'
 endian = 'little'
 XEOF
+    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig \
     meson setup build --prefix=$PREFIX --cross-file cross.txt \
         -Ddoc=disabled -Dtests=disabled -Dtools=disabled \
         -Dcache-build=disabled -Ddefault-hinting=slight \

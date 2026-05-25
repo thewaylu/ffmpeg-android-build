@@ -308,6 +308,21 @@ if [ ! -f fribidi_done ]; then
 fi
 # verify fribidi .pc
 ls -la $PREFIX/lib/pkgconfig/fribidi* 2>/dev/null || echo "WARN: no fribidi.pc"
+# Create fribidi.pc manually if missing
+if [ ! -f $PREFIX/lib/pkgconfig/fribidi.pc ]; then
+cat > $PREFIX/lib/pkgconfig/fribidi.pc << EOF
+prefix=$PREFIX
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: fribidi
+Description: Free Implementation of the Unicode Bidirectional Algorithm
+Version: 1.0.16
+Libs: -L\${libdir} -lfribidi
+Cflags: -I\${includedir}
+EOF
+fi
 echo "fribidi DONE"
 
 # --- harfbuzz (cmake, needs freetype) ---

@@ -173,6 +173,28 @@ if [ ! -f svtav1_done ]; then
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=$PREFIX \
         -DBUILD_SHARED_LIBS=OFF \
+        -DBUILD_ENC=ON -DBUILD_DEC=OFF -DBUILD_TESTING=OFF -DBUILD_APPS=OFF
+    make $MAKEFLAGS && make install
+    touch $SRC/svtav1_done
+fi
+echo "SVT-AV1 DONE"
+
+# --- freetype (cmake, needed by harfbuzz, fontconfig, libass) ---
+build_lib freetype
+cd $SRC
+if [ ! -f freetype_done ]; then
+    rm -rf freetype
+    git clone --depth 1 https://github.com/freetype/freetype.git freetype
+    mkdir -p freetype/build
+    cd freetype/build
+    cmake .. \
+        -DCMAKE_SYSTEM_NAME=Android \
+        -DCMAKE_ANDROID_NDK=$NDK_ROOT \
+        -DCMAKE_ANDROID_ARCH_ABI=arm64-v8a \
+        -DCMAKE_ANDROID_API=$API \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=$PREFIX \
+        -DBUILD_SHARED_LIBS=OFF \
         -DFT_DISABLE_PNG=ON
     make $MAKEFLAGS && make install
     touch $SRC/freetype_done

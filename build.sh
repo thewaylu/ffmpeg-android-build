@@ -319,10 +319,9 @@ if [ ! -f fribidi_done ]; then
     make $MAKEFLAGS && make install
     touch $SRC/fribidi_done
 fi
-# fribidi autotools may skip .pc, create now
-if [ ! -f $PREFIX/lib/pkgconfig/fribidi.pc ]; then
-    mkdir -p $PREFIX/lib/pkgconfig
-    cat > $PREFIX/lib/pkgconfig/fribidi.pc << EOF
+# fribidi autotools may generate broken .pc, force-overwrite
+mkdir -p $PREFIX/lib/pkgconfig
+cat > $PREFIX/lib/pkgconfig/fribidi.pc << EOF
 prefix=$PREFIX
 exec_prefix=\${prefix}
 libdir=\${exec_prefix}/lib
@@ -333,7 +332,6 @@ Version: 1.0.16
 Libs: -L\${libdir} -lfribidi
 Cflags: -I\${includedir}
 EOF
-fi
 echo "fribidi DONE"
 
 # --- harfbuzz (cmake, needs freetype) ---

@@ -441,7 +441,7 @@ includedir=${prefix}/include
 Name: FreeType 2
 Description: A free, high-quality, and portable font engine.
 Version: 27.0.20
-Libs: -L${libdir} -lfreetype
+Libs: ${libdir}/libfreetype.a
 Cflags: -I${includedir}/freetype2
 EOF2
 sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/freetype2.pc
@@ -454,7 +454,7 @@ includedir=${prefix}/include
 Name: fribidi
 Description: GNU FriBidi
 Version: 1.0.16
-Libs: -L${libdir} -lfribidi
+Libs: ${libdir}/libfribidi.a
 Cflags: -I${includedir}
 EOF2
 sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/fribidi.pc
@@ -467,7 +467,7 @@ includedir=${prefix}/include
 Name: harfbuzz
 Description: HarfBuzz text shaping library
 Version: 11.2.0
-Libs: -L${libdir} -lharfbuzz
+Libs: ${libdir}/libharfbuzz.a
 Cflags: -I${includedir}/harfbuzz
 EOF2
 sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/harfbuzz.pc
@@ -481,7 +481,7 @@ Name: Fontconfig
 Description: Font configuration and customization library
 Version: 2.16.0
 Requires: freetype2
-Libs: -L${libdir} -lfontconfig
+Libs: ${libdir}/libfontconfig.a
 Cflags: -I${includedir}
 EOF2
 sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/fontconfig.pc
@@ -495,7 +495,7 @@ Name: libass
 Description: LibASS is an SSA/ASS subtitles rendering library
 Version: 0.17.3
 Requires: fribidi >= 0.19.0, freetype2 >= 9.17.3
-Libs: -L${libdir} -lass
+Libs: ${libdir}/libass.a
 Cflags: -I${includedir}
 EOF2
 sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/libass.pc

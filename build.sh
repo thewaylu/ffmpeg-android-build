@@ -346,6 +346,8 @@ if [ ! -f libass_done ]; then
     FRIBIDI_LIBS="-L$PREFIX/lib -lfribidi" \
     FREETYPE_CFLAGS="-I$PREFIX/include/freetype2" \
     FREETYPE_LIBS="-L$PREFIX/lib -l:libfreetype.a" \
+    HARFBUZZ_CFLAGS="-I$PREFIX/include/harfbuzz" \
+    HARFBUZZ_LIBS="-L$PREFIX/lib -l:libharfbuzz.a" \
     ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
         CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
     make $MAKEFLAGS && make install

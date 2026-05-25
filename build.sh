@@ -439,6 +439,9 @@ if [ ! -f libass_done ]; then
     touch $SRC/libass_done
 fi
 echo "libass DONE"
+# Verify libass headers
+find $PREFIX/include -name "ass.h" 2>/dev/null || echo "WARN: ass.h not found"
+ls -la $PREFIX/lib/libass* 2>/dev/null || echo "WARN: libass.a missing"
 
 # Create libass.pc manually (autotools might not generate it)
 cat > $PREFIX/lib/pkgconfig/libass.pc << EOF

@@ -308,21 +308,6 @@ if [ ! -f fribidi_done ]; then
 fi
 # verify fribidi .pc
 ls -la $PREFIX/lib/pkgconfig/fribidi* 2>/dev/null || echo "WARN: no fribidi.pc"
-# Create fribidi.pc manually if missing
-if [ ! -f $PREFIX/lib/pkgconfig/fribidi.pc ]; then
-cat > $PREFIX/lib/pkgconfig/fribidi.pc << EOF
-prefix=$PREFIX
-exec_prefix=\${prefix}
-libdir=\${exec_prefix}/lib
-includedir=\${prefix}/include
-
-Name: fribidi
-Description: Free Implementation of the Unicode Bidirectional Algorithm
-Version: 1.0.16
-Libs: -L\${libdir} -lfribidi
-Cflags: -I\${includedir}
-EOF
-fi
 echo "fribidi DONE"
 
 # --- harfbuzz (cmake, needs freetype) ---
@@ -403,20 +388,6 @@ XEOF
     touch $SRC/fontconfig_done
 fi
 echo "fontconfig DONE"
-# Create fontconfig.pc manually (meson might not generate it for cross-build)
-cat > $PREFIX/lib/pkgconfig/fontconfig.pc << EOF
-prefix=$PREFIX
-exec_prefix=\${prefix}
-libdir=\${exec_prefix}/lib
-includedir=\${prefix}/include
-
-Name: Fontconfig
-Description: Font configuration and customization library
-Version: 2.16.0
-Libs: -L\${libdir} -lfontconfig
-Libs.private: -lfreetype -lexpat -lm
-Cflags: -I\${includedir}
-EOF
 
 # --- libass ---
 build_lib libass
@@ -425,14 +396,8 @@ if [ ! -f libass_done ]; then
     rm -rf libass
     git clone --depth 1 https://github.com/libass/libass.git libass
     cd libass
-    autoreconf -fi 2>/dev/null || true
+    autoreconf -fi
     PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig \
-    FREETYPE_CFLAGS="-I$PREFIX/include/freetype2" \
-    FREETYPE_LIBS="-L$PREFIX/lib -lfreetype" \
-    FRIBIDI_CFLAGS="-I$PREFIX/include" \
-    FRIBIDI_LIBS="-L$PREFIX/lib -lfribidi" \
-    HARFBUZZ_CFLAGS="-I$PREFIX/include/harfbuzz" \
-    HARFBUZZ_LIBS="-L$PREFIX/lib -lharfbuzz" \
     ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
         CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
     make $MAKEFLAGS && make install
@@ -440,24 +405,85 @@ if [ ! -f libass_done ]; then
 fi
 echo "libass DONE"
 # Verify libass headers
-find $PREFIX/include -name "ass.h" 2>/dev/null || echo "WARN: ass.h not found"
-ls -la $PREFIX/lib/libass* 2>/dev/null || echo "WARN: libass.a missing"
+find $PREFIX/include -name "ass.h" 2>/dev/null || { echo "FATAL: ass.h not found - headers missing"; exit 1; }
+ls -la $PREFIX/lib/libass* 2>/dev/null || { echo "FATAL: libass.a missing"; exit 1; }
 
-# Create libass.pc manually (autotools might not generate it)
-cat > $PREFIX/lib/pkgconfig/libass.pc << EOF
+# --- Ensure ALL .pc files exist (autotools/cmake may skip them) ---
+echo "=== Verifying all .pc files ==="
+# freetype
+if [ ! -f $PREFIX/lib/pkgconfig/freetype2.pc ]; then
+    cat > $PREFIX/lib/pkgconfig/freetype2.pc << EOF
+prefix=$PREFIX
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: FreeType 2
+Description: A free, high-quality, and portable font engine.
+Version: 2.13.0
+Libs: -L\${libdir} -lfreetype
+Cflags: -I\${includedir}/freetype2 -I\${includedir}
+EOF
+fi
+# fribidi
+if [ ! -f $PREFIX/lib/pkgconfig/fribidi.pc ]; then
+    cat > $PREFIX/lib/pkgconfig/fribidi.pc << EOF
+prefix=$PREFIX
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: fribidi
+Version: 1.0.16
+Libs: -L\${libdir} -lfribidi
+Cflags: -I\${includedir}
+EOF
+fi
+# harfbuzz
+if [ ! -f $PREFIX/lib/pkgconfig/harfbuzz.pc ]; then
+    cat > $PREFIX/lib/pkgconfig/harfbuzz.pc << EOF
+prefix=$PREFIX
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: harfbuzz
+Version: 11.2.0
+Libs: -L\${libdir} -lharfbuzz
+Cflags: -I\${includedir}/harfbuzz
+EOF
+fi
+# fontconfig
+if [ ! -f $PREFIX/lib/pkgconfig/fontconfig.pc ]; then
+    cat > $PREFIX/lib/pkgconfig/fontconfig.pc << EOF
+prefix=$PREFIX
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: Fontconfig
+Version: 2.16.0
+Libs: -L\${libdir} -lfontconfig
+Cflags: -I\${includedir}
+EOF
+fi
+# libass
+if [ ! -f $PREFIX/lib/pkgconfig/libass.pc ]; then
+    cat > $PREFIX/lib/pkgconfig/libass.pc << EOF
 prefix=$PREFIX
 exec_prefix=\${prefix}
 libdir=\${exec_prefix}/lib
 includedir=\${prefix}/include
 
 Name: libass
-Description: libass subtitle renderer
 Version: 0.17.3
-Requires: fribidi >= 0.19.1, freetype2 >= 9.17.3
+Requires: fribidi >= 0.19.0, freetype2 >= 9.17.0
 Libs: -L\${libdir} -lass
-Libs.private: -lm
 Cflags: -I\${includedir}
 EOF
+fi
+ls -la $PREFIX/lib/pkgconfig/*.pc
+echo "=== .pc files OK ==="
 
 # --- libaom ---
 build_lib aom

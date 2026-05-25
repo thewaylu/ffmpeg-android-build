@@ -369,7 +369,7 @@ XEOF
     meson setup build --prefix=$PREFIX --cross-file cross.txt \
         -Ddoc=disabled -Dtests=disabled -Dtools=disabled \
         -Dcache-build=disabled -Ddefault-hinting=slight \
-        -Dpng=disabled
+        --wrap-mode=nofallback
     ninja -C build install
     touch $SRC/fontconfig_done
 fi

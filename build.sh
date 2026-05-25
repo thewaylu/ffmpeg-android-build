@@ -436,11 +436,21 @@ if [ ! -f libass_done ]; then
     git clone --depth 1 https://github.com/libass/libass.git libass
     cd libass
     autoreconf -fi
-    # Find where fribidi.h actually is (may be in subdir or root)
-    FRIBIDI_HEADER=$(dirname $(find $PREFIX/include -name fribidi.h -type f 2>/dev/null | head -1))
-    echo "FRIBIDI_HEADER=$FRIBIDI_HEADER"
+    # Find where fribidi.h actually is
+    FRIBIDI_H=$(find $PREFIX/include $SRC/fribidi -name fribidi.h -type f 2>/dev/null | head -1)
+    if [ -z "$FRIBIDI_H" ]; then
+        echo "FATAL: fribidi.h not found in prefix or source"
+        exit 1
+    fi
+    FRIBIDI_CFLAGS="-I$(dirname $FRIBIDI_H)"
+    echo "FRIBIDI header: $FRIBIDI_H"
+    # Copy header to prefix if not already there
+    if [[ "$FRIBIDI_H" != "$PREFIX/include"* ]]; then
+        mkdir -p $PREFIX/include/fribidi
+        find $SRC/fribidi -name "*.h" -exec cp {} $PREFIX/include/fribidi/ \;
+    fi
     PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig \
-    FRIBIDI_CFLAGS="-I${FRIBIDI_HEADER:-$PREFIX/include}" \
+    FRIBIDI_CFLAGS="$FRIBIDI_CFLAGS" \
     FRIBIDI_LIBS="-L$PREFIX/lib -lfribidi" \
     ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
         CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB

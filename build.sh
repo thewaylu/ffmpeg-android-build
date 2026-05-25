@@ -179,7 +179,83 @@ if [ ! -f svtav1_done ]; then
 fi
 echo "SVT-AV1 DONE"
 
-# --- freetype (cmake, needed by harfbuzz, fontconfig, libass) ---
+# --- libopus ---
+build_lib opus
+cd $SRC
+if [ ! -f opus_done ]; then
+    rm -rf opus
+    clone_or_fail https://github.com/xiph/opus.git opus opus
+    ./autogen.sh
+    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
+        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
+    make $MAKEFLAGS && make install
+    touch $SRC/opus_done
+fi
+echo "opus DONE"
+
+# --- libogg ---
+build_lib ogg
+cd $SRC
+if [ ! -f ogg_done ]; then
+    rm -rf ogg
+    clone_or_fail https://github.com/xiph/ogg.git ogg ogg
+    ./autogen.sh
+    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
+        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
+    make $MAKEFLAGS && make install
+    touch $SRC/ogg_done
+fi
+echo "ogg DONE"
+
+# --- libvorbis ---
+build_lib vorbis
+cd $SRC
+if [ ! -f vorbis_done ]; then
+    rm -rf vorbis
+    clone_or_fail https://github.com/xiph/vorbis.git vorbis vorbis
+    ./autogen.sh
+    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
+        --with-ogg=$PREFIX \
+        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
+    make $MAKEFLAGS && make install
+    touch $SRC/vorbis_done
+fi
+echo "vorbis DONE"
+
+# --- mp3lame (tarball) ---
+build_lib mp3lame
+cd $SRC
+if [ ! -f lame_done ]; then
+    rm -rf lame-3.100
+    wget -q --timeout=300 "https://sourceforge.net/projects/lame/files/lame/3.100/lame-3.100.tar.gz/download" -O lame.tar.gz || \
+    wget -q --timeout=300 "https://netix.dl.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz" -O lame.tar.gz || \
+    { echo "FATAL: failed to download LAME"; exit 1; }
+    tar xzf lame.tar.gz && rm lame.tar.gz
+    cd lame-3.100
+    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
+        --disable-frontend \
+        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
+    make $MAKEFLAGS && make install
+    touch $SRC/lame_done
+fi
+echo "mp3lame DONE"
+
+# --- libvpx ---
+build_lib vpx
+cd $SRC
+if [ ! -f vpx_done ]; then
+    rm -rf libvpx
+    clone_or_fail https://chromium.googlesource.com/webm/libvpx libvpx libvpx
+    ./configure --target=arm64-android-gcc --prefix=$PREFIX \
+        --enable-static --disable-shared --disable-examples --disable-tools --disable-docs \
+        --disable-unit-tests --as=yasm \
+        --extra-cflags="-fPIC"
+    make $MAKEFLAGS && make install
+    touch $SRC/vpx_done
+fi
+echo "vpx DONE"
+
+# --- freetype (cmake, needed by harfbuzz, libass) ---
 build_lib freetype
 cd $SRC
 if [ ! -f freetype_done ]; then

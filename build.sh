@@ -326,19 +326,34 @@ if [ ! -f harfbuzz_done ]; then
 fi
 echo "harfbuzz DONE"
 
-# --- fontconfig ---
+# --- fontconfig (meson) ---
 build_lib fontconfig
 cd $SRC
 if [ ! -f fontconfig_done ]; then
     rm -rf fontconfig
     git clone --depth 1 https://gitlab.freedesktop.org/fontconfig/fontconfig.git fontconfig
     cd fontconfig
-    autoreconf -fi 2>/dev/null || true
-    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig \
-    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
-        --disable-docs \
-        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
-    make $MAKEFLAGS && make install
+    # meson cross file for Android
+    cat > cross.txt << XEOF
+[binaries]
+c = '${CC}'
+cpp = '${CXX}'
+ar = '${AR}'
+strip = '${STRIP}'
+pkgconfig = '/usr/bin/pkg-config'
+
+[built-in options]
+default_library = 'static'
+
+[host_machine]
+system = 'android'
+cpu_family = 'aarch64'
+cpu = 'aarch64'
+endian = 'little'
+XEOF
+    meson setup build --prefix=$PREFIX --cross-file cross.txt \
+        -Ddoc=disabled -Dtests=disabled -Dtools=disabled
+    ninja -C build install
     touch $SRC/fontconfig_done
 fi
 echo "fontconfig DONE"

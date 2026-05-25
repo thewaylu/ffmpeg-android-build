@@ -382,7 +382,7 @@ Name: fribidi
 Description: GNU FriBidi
 Version: 1.0.16
 Libs: -L${libdir} -l:libfribidi.a
-Cflags: -I${includedir}
+Cflags: -I${includedir}/fribidi
 EOF2
 sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/fribidi.pc
 

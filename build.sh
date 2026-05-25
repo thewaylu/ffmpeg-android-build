@@ -381,8 +381,7 @@ XEOF
     PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig \
     meson setup build --prefix=$PREFIX --cross-file cross.txt \
         -Ddoc=disabled -Dtests=disabled -Dtools=disabled \
-        -Dcache-build=disabled -Ddefault-hinting=slight \
-        --wrap-mode=nofallback
+        -Dcache-build=disabled -Ddefault-hinting=slight
     ninja -C build install
     touch $SRC/fontconfig_done
 fi

@@ -437,6 +437,8 @@ if [ ! -f libass_done ]; then
     cd libass
     autoreconf -fi
     PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig \
+    FRIBIDI_CFLAGS="-I$PREFIX/include" \
+    FRIBIDI_LIBS="-L$PREFIX/lib -lfribidi" \
     ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
         CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
     make $MAKEFLAGS && make install

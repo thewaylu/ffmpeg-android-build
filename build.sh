@@ -359,6 +359,10 @@ pkgconfig = '/usr/bin/pkg-config'
 
 [built-in options]
 default_library = 'static'
+pkg_config_path = '${PREFIX}/lib/pkgconfig'
+
+[properties]
+pkg_config_libdir = '${PREFIX}/lib/pkgconfig'
 
 [host_machine]
 system = 'android'

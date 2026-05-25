@@ -209,8 +209,9 @@ if [ ! -f fribidi_done ]; then
     cd fribidi
     autoreconf -fi 2>/dev/null || true
     ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
+        --disable-docs \
         CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
-    make $MAKEFLAGS && make install
+    make $MAKEFLAGS && make install || true  # man pages may fail without c2man
     touch $SRC/fribidi_done
 fi
 # fribidi autotools may generate broken .pc, force-overwrite
@@ -248,9 +249,17 @@ cd $SRC
 if [ ! -f libpng_done ]; then
     rm -rf libpng
     git clone --depth 1 https://github.com/pnggroup/libpng.git libpng
-    cd libpng
-    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
-        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
+    mkdir -p libpng/build
+    cd libpng/build
+    cmake .. \
+        -DCMAKE_SYSTEM_NAME=Android \
+        -DCMAKE_ANDROID_NDK=$NDK_ROOT \
+        -DCMAKE_ANDROID_ARCH_ABI=arm64-v8a \
+        -DCMAKE_ANDROID_API=$API \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=$PREFIX \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DPNG_TESTS=OFF -DPNG_TOOLS=OFF
     make $MAKEFLAGS && make install
     touch $SRC/libpng_done
 fi

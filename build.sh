@@ -270,6 +270,93 @@ if [ ! -f vpx_done ]; then
 fi
 echo "vpx DONE"
 
+# --- freetype (needed by harfbuzz, fontconfig, libass) ---
+build_lib freetype
+cd $SRC
+if [ ! -f freetype_done ]; then
+    rm -rf freetype
+    git clone --depth 1 https://github.com/freetype/freetype.git freetype
+    cd freetype
+    ./autogen.sh 2>/dev/null || true
+    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
+        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
+    make $MAKEFLAGS && make install
+    touch $SRC/freetype_done
+fi
+echo "freetype DONE"
+
+# --- fribidi ---
+build_lib fribidi
+cd $SRC
+if [ ! -f fribidi_done ]; then
+    rm -rf fribidi
+    git clone --depth 1 https://github.com/fribidi/fribidi.git fribidi
+    cd fribidi
+    autoreconf -fi 2>/dev/null || true
+    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
+        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
+    make $MAKEFLAGS && make install
+    touch $SRC/fribidi_done
+fi
+echo "fribidi DONE"
+
+# --- harfbuzz (cmake, needs freetype) ---
+build_lib harfbuzz
+cd $SRC
+if [ ! -f harfbuzz_done ]; then
+    rm -rf harfbuzz
+    git clone --depth 1 https://github.com/harfbuzz/harfbuzz.git harfbuzz
+    mkdir -p harfbuzz/build
+    cd harfbuzz/build
+    cmake .. \
+        -DCMAKE_SYSTEM_NAME=Android \
+        -DCMAKE_ANDROID_NDK=$NDK_ROOT \
+        -DCMAKE_ANDROID_ARCH_ABI=arm64-v8a \
+        -DCMAKE_ANDROID_API=$API \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=$PREFIX \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DHB_HAVE_FREETYPE=ON \
+        -DHB_BUILD_TESTS=OFF \
+        -DHB_BUILD_UTILS=OFF
+    make $MAKEFLAGS && make install
+    touch $SRC/harfbuzz_done
+fi
+echo "harfbuzz DONE"
+
+# --- fontconfig ---
+build_lib fontconfig
+cd $SRC
+if [ ! -f fontconfig_done ]; then
+    rm -rf fontconfig
+    git clone --depth 1 https://gitlab.freedesktop.org/fontconfig/fontconfig.git fontconfig
+    cd fontconfig
+    autoreconf -fi 2>/dev/null || true
+    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig \
+    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
+        --disable-docs \
+        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
+    make $MAKEFLAGS && make install
+    touch $SRC/fontconfig_done
+fi
+echo "fontconfig DONE"
+
+# --- libass ---
+build_lib libass
+cd $SRC
+if [ ! -f libass_done ]; then
+    rm -rf libass
+    git clone --depth 1 https://github.com/libass/libass.git libass
+    cd libass
+    autoreconf -fi 2>/dev/null || true
+    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig \
+    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
+        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
+    make $MAKEFLAGS && make install
+    touch $SRC/libass_done
+fi
+echo "libass DONE"
+
 # --- libaom ---
 build_lib aom
 cd $SRC
@@ -337,6 +424,8 @@ if [ ! -f ffmpeg_done ]; then
         --enable-libx264 --enable-libx265 --enable-libvpx \
         --enable-libopus --enable-libmp3lame --enable-libvorbis \
         --enable-libaom --enable-libsvtav1 \
+        --enable-libass --enable-libfontconfig --enable-libfreetype \
+        --enable-libfribidi --enable-libharfbuzz \
         --enable-mediacodec --enable-jni \
         --enable-small \
         --enable-static --disable-shared \
@@ -377,7 +466,7 @@ echo "=== RESULT ==="
 ls -lh $PREFIX/lib/libffmpeg.so
 echo ""
 echo "=== ENCODERS ==="
-$PREFIX/bin/ffmpeg -encoders 2>/dev/null | grep -E 'libx264|libx265|svt_av1|libaom|libopus|libmp3lame|libvorbis|libvpx' || true
+$PREFIX/bin/ffmpeg -encoders 2>/dev/null | grep -E 'libx264|libx265|svt_av1|libaom|libopus|libmp3lame|libvorbis|libvpx|libass' || true
 
 echo ""
 echo "=== BUILD COMPLETE ==="

@@ -342,8 +342,10 @@ if [ ! -f libass_done ]; then
         find $SRC/fribidi -name "*.h" -exec cp {} $PREFIX/include/fribidi/ \;
     fi
     PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig \
-    FRIBIDI_CFLAGS="$FRIBIDI_CFLAGS" \
+    FRIBIDI_CFLAGS="-I${FRIBIDI_CFLAGS#-I}" \
     FRIBIDI_LIBS="-L$PREFIX/lib -lfribidi" \
+    FREETYPE_CFLAGS="-I$PREFIX/include/freetype2" \
+    FREETYPE_LIBS="-L$PREFIX/lib -l:libfreetype.a" \
     ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
         CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
     make $MAKEFLAGS && make install

@@ -320,56 +320,7 @@ if [ ! -f expat_done ]; then
 fi
 echo "expat DONE"
 
-# --- fontconfig (meson) ---
-build_lib fontconfig
-cd $SRC
-# force rebuild - options changed
-rm -f $SRC/fontconfig_done
-if [ ! -f fontconfig_done ]; then
-    rm -rf fontconfig
-    git clone --depth 1 https://gitlab.freedesktop.org/fontconfig/fontconfig.git fontconfig
-    cd fontconfig
-    # meson cross file for Android - uses ABSOLUTE paths
-    cat > cross.txt << XEOF
-[binaries]
-c = '${CC}'
-cpp = '${CXX}'
-ar = '${AR}'
-strip = '${STRIP}'
-pkgconfig = '/usr/bin/pkg-config'
-
-[built-in options]
-default_library = 'static'
-pkg_config_path = '${PREFIX}/lib/pkgconfig'
-
-[properties]
-pkg_config_libdir = '${PREFIX}/lib/pkgconfig'
-freetype_includedir = '${PREFIX}/include/freetype2'
-
-[host_machine]
-system = 'android'
-cpu_family = 'aarch64'
-cpu = 'aarch64'
-endian = 'little'
-XEOF
-    echo "=== cross.txt ==="
-    cat cross.txt
-    echo "=== checking freetype2.pc ==="
-    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion freetype2 2>&1 || echo "PKG_CONFIG FAILED"
-    echo "=== checking freetype headers ==="
-    ls -la $PREFIX/include/freetype2/freetype.h 2>&1 || echo "NO headers"
-    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig \
-    PKG_CONFIG_LIBDIR=$PREFIX/lib/pkgconfig \
-    meson setup build --prefix=$PREFIX --cross-file cross.txt \
-        -Ddoc=disabled -Dtests=disabled -Dtools=disabled \
-        -Dcache-build=disabled -Ddefault-hinting=slight \
-        --wrap-mode=nofallback
-    ninja -C build install
-    touch $SRC/fontconfig_done
-fi
-echo "fontconfig DONE"
-
-# --- libass ---
+# --- libass (fontconfig is optional, libass works without it for subtitle burn) ---
 build_lib libass
 cd $SRC
 if [ ! -f libass_done ]; then
@@ -543,8 +494,7 @@ if [ ! -f ffmpeg_done ]; then
         --enable-libx264 --enable-libx265 --enable-libvpx \
         --enable-libopus --enable-libmp3lame --enable-libvorbis \
         --enable-libaom --enable-libsvtav1 \
-        --enable-libass --enable-libfontconfig --enable-libfreetype \
-        --enable-libfribidi --enable-libharfbuzz \
+        --enable-libass --enable-libfreetype --enable-libfribidi --enable-libharfbuzz \
         --enable-mediacodec --enable-jni \
         --enable-small \
         --enable-static --disable-shared \

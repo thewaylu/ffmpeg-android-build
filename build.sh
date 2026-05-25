@@ -305,6 +305,20 @@ if [ ! -f fribidi_done ]; then
     touch $SRC/fribidi_done
 fi
 # fribidi autotools may generate broken .pc, force-overwrite
+echo "=== fribidi lib check ==="
+find $SRC/fribidi -name "*.a" -o -name "*.la" 2>/dev/null
+ls -la $PREFIX/lib/libfribidi* 2>/dev/null || echo "WARN: libfribidi not in prefix"
+# If libfribidi not installed, copy from build dir
+if [ ! -f $PREFIX/lib/libfribidi.a ]; then
+    FRIBIDI_LIB=$(find $SRC/fribidi -name "libfribidi*.a" -type f 2>/dev/null | head -1)
+    if [ -n "$FRIBIDI_LIB" ]; then
+        cp "$FRIBIDI_LIB" $PREFIX/lib/libfribidi.a
+        echo "Copied: $FRIBIDI_LIB"
+    else
+        echo "FATAL: libfribidi.a not found in build dir either"
+        exit 1
+    fi
+fi
 mkdir -p $PREFIX/lib/pkgconfig
 cat > $PREFIX/lib/pkgconfig/fribidi.pc << EOF
 prefix=$PREFIX
@@ -441,7 +455,7 @@ includedir=${prefix}/include
 Name: FreeType 2
 Description: A free, high-quality, and portable font engine.
 Version: 27.0.20
-Libs: ${libdir}/libfreetype.a
+Libs: -L${libdir} -l:libfreetype.a
 Cflags: -I${includedir}/freetype2
 EOF2
 sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/freetype2.pc
@@ -454,7 +468,7 @@ includedir=${prefix}/include
 Name: fribidi
 Description: GNU FriBidi
 Version: 1.0.16
-Libs: ${libdir}/libfribidi.a
+Libs: -L${libdir} -l:libfribidi.a
 Cflags: -I${includedir}
 EOF2
 sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/fribidi.pc
@@ -467,7 +481,7 @@ includedir=${prefix}/include
 Name: harfbuzz
 Description: HarfBuzz text shaping library
 Version: 11.2.0
-Libs: ${libdir}/libharfbuzz.a
+Libs: -L${libdir} -l:libharfbuzz.a
 Cflags: -I${includedir}/harfbuzz
 EOF2
 sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/harfbuzz.pc
@@ -481,7 +495,7 @@ Name: Fontconfig
 Description: Font configuration and customization library
 Version: 2.16.0
 Requires: freetype2
-Libs: ${libdir}/libfontconfig.a
+Libs: -L${libdir} -l:libfontconfig.a
 Cflags: -I${includedir}
 EOF2
 sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/fontconfig.pc
@@ -495,7 +509,7 @@ Name: libass
 Description: LibASS is an SSA/ASS subtitles rendering library
 Version: 0.17.3
 Requires: fribidi >= 0.19.0, freetype2 >= 9.17.3
-Libs: ${libdir}/libass.a
+Libs: -L${libdir} -l:libass.a
 Cflags: -I${includedir}
 EOF2
 sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/libass.pc

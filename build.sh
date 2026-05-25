@@ -306,6 +306,8 @@ if [ ! -f fribidi_done ]; then
     make $MAKEFLAGS && make install
     touch $SRC/fribidi_done
 fi
+# verify fribidi .pc
+ls -la $PREFIX/lib/pkgconfig/fribidi* 2>/dev/null || echo "WARN: no fribidi.pc"
 echo "fribidi DONE"
 
 # --- harfbuzz (cmake, needs freetype) ---
@@ -396,6 +398,12 @@ if [ ! -f libass_done ]; then
     cd libass
     autoreconf -fi 2>/dev/null || true
     PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig \
+    FREETYPE_CFLAGS="-I$PREFIX/include/freetype2" \
+    FREETYPE_LIBS="-L$PREFIX/lib -lfreetype" \
+    FRIBIDI_CFLAGS="-I$PREFIX/include" \
+    FRIBIDI_LIBS="-L$PREFIX/lib -lfribidi" \
+    HARFBUZZ_CFLAGS="-I$PREFIX/include/harfbuzz" \
+    HARFBUZZ_LIBS="-L$PREFIX/lib -lharfbuzz" \
     ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
         CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
     make $MAKEFLAGS && make install

@@ -289,9 +289,22 @@ if [ ! -f freetype_done ]; then
     make $MAKEFLAGS && make install
     touch $SRC/freetype_done
 fi
+# freetype cmake should generate .pc, but ensure it exists
+if [ ! -f $PREFIX/lib/pkgconfig/freetype2.pc ]; then
+    mkdir -p $PREFIX/lib/pkgconfig
+    cat > $PREFIX/lib/pkgconfig/freetype2.pc << EOF
+prefix=$PREFIX
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: FreeType 2
+Version: 2.13.0
+Libs: -L\${libdir} -lfreetype
+Cflags: -I\${includedir}/freetype2
+EOF
+fi
 echo "freetype DONE"
-# verify freetype .pc exists
-ls -la $PREFIX/lib/pkgconfig/freetype* 2>/dev/null || echo "WARN: no freetype.pc"
 
 # --- fribidi ---
 build_lib fribidi
@@ -306,8 +319,21 @@ if [ ! -f fribidi_done ]; then
     make $MAKEFLAGS && make install
     touch $SRC/fribidi_done
 fi
-# verify fribidi .pc
-ls -la $PREFIX/lib/pkgconfig/fribidi* 2>/dev/null || echo "WARN: no fribidi.pc"
+# fribidi autotools may skip .pc, create now
+if [ ! -f $PREFIX/lib/pkgconfig/fribidi.pc ]; then
+    mkdir -p $PREFIX/lib/pkgconfig
+    cat > $PREFIX/lib/pkgconfig/fribidi.pc << EOF
+prefix=$PREFIX
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: fribidi
+Version: 1.0.16
+Libs: -L\${libdir} -lfribidi
+Cflags: -I\${includedir}
+EOF
+fi
 echo "fribidi DONE"
 
 # --- harfbuzz (cmake, needs freetype) ---
@@ -333,6 +359,21 @@ if [ ! -f harfbuzz_done ]; then
         -DHB_BUILD_UTILS=OFF
     make $MAKEFLAGS && make install
     touch $SRC/harfbuzz_done
+fi
+# harfbuzz cmake should generate .pc, but ensure it exists
+if [ ! -f $PREFIX/lib/pkgconfig/harfbuzz.pc ]; then
+    mkdir -p $PREFIX/lib/pkgconfig
+    cat > $PREFIX/lib/pkgconfig/harfbuzz.pc << EOF
+prefix=$PREFIX
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: harfbuzz
+Version: 11.2.0
+Libs: -L\${libdir} -lharfbuzz
+Cflags: -I\${includedir}/harfbuzz
+EOF
 fi
 echo "harfbuzz DONE"
 

@@ -388,6 +388,20 @@ XEOF
     touch $SRC/fontconfig_done
 fi
 echo "fontconfig DONE"
+# Create fontconfig.pc manually (meson might not generate it for cross-build)
+cat > $PREFIX/lib/pkgconfig/fontconfig.pc << EOF
+prefix=$PREFIX
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: Fontconfig
+Description: Font configuration and customization library
+Version: 2.16.0
+Libs: -L\${libdir} -lfontconfig
+Libs.private: -lfreetype -lexpat -lm
+Cflags: -I\${includedir}
+EOF
 
 # --- libass ---
 build_lib libass
@@ -410,6 +424,22 @@ if [ ! -f libass_done ]; then
     touch $SRC/libass_done
 fi
 echo "libass DONE"
+
+# Create libass.pc manually (autotools might not generate it)
+cat > $PREFIX/lib/pkgconfig/libass.pc << EOF
+prefix=$PREFIX
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: libass
+Description: libass subtitle renderer
+Version: 0.17.3
+Requires: fribidi >= 0.19.1, freetype2 >= 9.17.3
+Libs: -L\${libdir} -lass
+Libs.private: -lm
+Cflags: -I\${includedir}
+EOF
 
 # --- libaom ---
 build_lib aom

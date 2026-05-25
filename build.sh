@@ -394,7 +394,7 @@ includedir=${prefix}/include
 Name: harfbuzz
 Description: HarfBuzz text shaping library
 Version: 11.2.0
-Libs: -L${libdir} -l:libharfbuzz.a
+Libs: -L${libdir} -l:libharfbuzz.a -l:libfreetype.a
 Cflags: -I${includedir}/harfbuzz
 EOF2
 sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/harfbuzz.pc

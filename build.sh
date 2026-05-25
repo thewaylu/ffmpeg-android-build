@@ -200,6 +200,20 @@ if [ ! -f freetype_done ]; then
 fi
 echo "freetype DONE"
 
+# Ensure freetype2.pc exists NOW (before fontconfig needs it)
+mkdir -p $PREFIX/lib/pkgconfig
+cat > $PREFIX/lib/pkgconfig/freetype2.pc << 'EOF2'
+prefix=/tmp/ffbuild/install
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+Name: FreeType 2
+Version: 27.0.20
+Libs: -L${libdir} -l:libfreetype.a
+Cflags: -I${includedir}/freetype2
+EOF2
+sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/freetype2.pc
+
 # --- fribidi ---
 build_lib fribidi
 cd $SRC
@@ -309,6 +323,8 @@ echo "expat DONE"
 # --- fontconfig (meson) ---
 build_lib fontconfig
 cd $SRC
+# force rebuild - options changed
+rm -f $SRC/fontconfig_done
 if [ ! -f fontconfig_done ]; then
     rm -rf fontconfig
     git clone --depth 1 https://gitlab.freedesktop.org/fontconfig/fontconfig.git fontconfig
@@ -336,9 +352,11 @@ cpu = 'aarch64'
 endian = 'little'
 XEOF
     PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig \
+    PKG_CONFIG_LIBDIR=$PREFIX/lib/pkgconfig \
     meson setup build --prefix=$PREFIX --cross-file cross.txt \
         -Ddoc=disabled -Dtests=disabled -Dtools=disabled \
-        -Dcache-build=disabled -Ddefault-hinting=slight
+        -Dcache-build=disabled -Ddefault-hinting=slight \
+        --wrap-mode=nofallback
     ninja -C build install
     touch $SRC/fontconfig_done
 fi

@@ -427,6 +427,20 @@ Cflags: -I${includedir}
 EOF2
 sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/libass.pc
 
+# --- libmp3lame.pc (headers in include/lame/) ---
+cat > $PREFIX/lib/pkgconfig/libmp3lame.pc << 'EOF2'
+prefix=/tmp/ffbuild/install
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+Name: libmp3lame
+Description: MP3 encoding library
+Version: 3.100
+Libs: -L${libdir} -lmp3lame
+Cflags: -I${includedir}/lame
+EOF2
+sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/libmp3lame.pc
+
 echo "Checking .pc files:"
 PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion fribidi 2>&1
 PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion libass 2>&1

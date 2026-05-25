@@ -349,6 +349,7 @@ if [ ! -f libass_done ]; then
     HARFBUZZ_CFLAGS="-I$PREFIX/include/harfbuzz" \
     HARFBUZZ_LIBS="-L$PREFIX/lib -l:libharfbuzz.a" \
     ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
+        --disable-require-system-font-provider \
         CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
     make $MAKEFLAGS && make install
     touch $SRC/libass_done

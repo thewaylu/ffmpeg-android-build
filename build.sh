@@ -177,14 +177,48 @@ needs_exe_wrapper = false
 EOF
 
 # ---------------- NDK ----------------
-if [ ! -d "$NDK_ROOT" ]; then
+echo "=== 环境 ==="
+echo "nproc=$(nproc)  磁盘:"; df -h /tmp / | tail -2
+echo "curl=$(curl --version 2>/dev/null | head -1)"
+echo "wget=$(command -v wget || echo 无)"
+echo "cmake=$(cmake --version 2>/dev/null | head -1)"
+echo "meson=$(meson --version 2>/dev/null)"
+echo "ninja=$(ninja --version 2>/dev/null)"
+echo "cargo=$(command -v cargo || echo 无)"
+
+NDK_ZIP=$BUILD_ROOT/ndk.zip
+if [ ! -x "$CC" ]; then
     echo "=== 下载 NDK $NDK_VER ==="
     cd "$BUILD_ROOT"
-    curl -fL --retry 3 -o ndk.zip "https://dl.google.com/android/repository/$NDK_VER-linux.zip"
-    unzip -q ndk.zip && mv "$NDK_VER" "$NDK_ROOT" && rm -f ndk.zip
+    rm -f "$NDK_ZIP"
+    curl -fL --retry 3 --retry-delay 5 -o "$NDK_ZIP" \
+        "https://dl.google.com/android/repository/$NDK_VER-linux.zip" \
+        || echo "curl 失败，改用 wget"
+    # 校验：NDK zip 应有 600MB+ 且是合法 zip
+    if [ ! -s "$NDK_ZIP" ] || [ "$(stat -c %s "$NDK_ZIP" 2>/dev/null || echo 0)" -lt 100000000 ]; then
+        echo "curl 结果不可用，尝试 wget"
+        wget -c -q --show-progress -O "$NDK_ZIP" \
+            "https://dl.google.com/android/repository/$NDK_VER-linux.zip" \
+            || echo "wget 也失败"
+    fi
+    if [ ! -s "$NDK_ZIP" ] || [ "$(stat -c %s "$NDK_ZIP" 2>/dev/null || echo 0)" -lt 100000000 ]; then
+        echo "FATAL: NDK 下载失败（两种方法都不行）。文件状态："
+        ls -la "$NDK_ZIP" 2>/dev/null || echo "  无 $NDK_ZIP"
+        exit 1
+    fi
+    echo "NDK zip 就绪: $(stat -c %s "$NDK_ZIP") 字节，解压中..."
+    rm -rf "$NDK_ROOT" "$BUILD_ROOT/$NDK_VER"
+    unzip -q "$NDK_ZIP" -d "$BUILD_ROOT" || { echo "FATAL: unzip 失败"; exit 1; }
+    mv "$BUILD_ROOT/$NDK_VER" "$NDK_ROOT" || { echo "FATAL: mv 失败，解压出的目录名不是 $NDK_VER"; ls -la "$BUILD_ROOT"; exit 1; }
+    rm -f "$NDK_ZIP"
 fi
-[ -x "$CC" ] || { echo "FATAL: 找不到 NDK 编译器 $CC"; exit 1; }
+if [ ! -x "$CC" ]; then
+    echo "FATAL: NDK 编译器仍不存在：$CC"
+    ls -la "$TOOLCHAIN/bin" 2>/dev/null | head -10 || echo "  工具链目录都没有"
+    exit 1
+fi
 echo "NDK: $("$CC" --version | head -1)"
+
 for t in ar nm ranlib strip readelf objdump; do
     [ -f "$TOOLCHAIN/bin/llvm-$t" ] && ln -sf "llvm-$t" "$TOOLCHAIN/bin/${TARGET}-$t"
 done

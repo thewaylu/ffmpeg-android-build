@@ -9,6 +9,10 @@ on:
         required: false
         default: ''
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -50,27 +54,52 @@ jobs:
           SKIP_LIBS: ${{ github.event.inputs.skip_libs }}
         run: |
           chmod +x build.sh
-          ./build.sh
+          set -o pipefail
+          ./build.sh 2>&1 | tee /tmp/ffbuild-stdout.log
+
+      - name: 失败时把日志尾部开成 issue（便于无 token 排查）
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let tail = '';
+            for (const p of ['/tmp/ffbuild-stdout.log', '/tmp/ffbuild/build-fail.log']) {
+              try { tail = fs.readFileSync(p, 'utf8').slice(-14000); break; } catch (e) {}
+            }
+            if (!tail) tail = '(读不到日志文件)';
+            const sha = context.sha.slice(0, 7);
+            const title = `CI 失败 ${sha} run#${context.runNumber} ${new Date().toISOString().slice(0,16)}Z`;
+            const body = `构建失败，日志尾部：\n\n\`\`\`\n${tail}\n\`\`\`\n\n` +
+              `run: ${context.payload.repository ? 'https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId : ''}`;
+            await github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              title, body, labels: ['ci-failure']
+            });
 
       - name: Upload 单文件产物
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: libffmpeg-android-arm64
           path: /tmp/ffbuild/install/lib/libffmpeg.so
-          if-no-files-found: error
+          if-no-files-found: ignore
 
       - name: Upload 未 strip 版本（便于调试）
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ffmpeg-unstripped
           path: /tmp/ffbuild/ffmpeg-unstripped
-          if-no-files-found: warn
+          if-no-files-found: ignore
 
-      - name: Upload 构建报告与日志
+      - name: Upload 构建报告与逐库日志
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-report
           path: |
             /tmp/ffbuild/build-report.txt
+            /tmp/ffbuild-stdout.log
             /tmp/ffbuild/logs
-          if-no-files-found: warn
+          if-no-files-found: ignore

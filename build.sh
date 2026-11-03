@@ -93,10 +93,19 @@ fetch() {
         echo "[$name] 源码已在，跳过下载"; return 0
     fi
     local tmp=$SRC/$dir.dl
-    echo "[$name] 下载 $url"
     rm -f "$tmp"
-    curl -fL --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 30 -o "$tmp" "$url"       || wget -c -q -T 60 -t 3 -O "$tmp" "$url" || {
-        echo "[$name] 下载失败（curl 与 wget 都试过）：$url"; rm -f "$tmp"; return 1; }
+    # $url 可以是空格分隔的多个候选源，逐个用 curl / wget 尝试
+    local got=0 u
+    for u in $url; do
+        echo "[$name] 尝试下载 $u"
+        if curl -fL --retry 4 --retry-delay 10 --retry-all-errors --connect-timeout 30 -m 900 -o "$tmp" "$u"; then
+            got=1; break
+        fi
+        echo "[$name] curl 失败，改用 wget"
+        if wget -c -q -T 60 -t 3 -O "$tmp" "$u"; then got=1; break; fi
+        rm -f "$tmp"
+    done
+    [ $got -eq 1 ] || { echo "[$name] 所有候选源都下载失败：$url"; return 1; }
     [ -s "$tmp" ] || { echo "[$name] 下载到的文件是空的"; rm -f "$tmp"; return 1; }
     # 确认不是 HTML 错误页（gzip/xz/bzip2 的魔数）
     local magic=$(od -An -tx1 -N2 "$tmp" 2>/dev/null | tr -d ' \n')

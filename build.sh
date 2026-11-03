@@ -1,637 +1,631 @@
 #!/bin/bash
-set -eo pipefail
-# ============================================
-# FFmpeg Static Merge Build for Android ARM64
-# Produces a single libffmpeg.so with:
-#   x264, x265, SVT-AV1, libaom, opus, mp3lame,
-#   vorbis, ogg, vpx + MediaCodec HW decode
-# ============================================
+# ============================================================================
+# FFmpeg 9.0.2 单体构建 for Android arm64-v8a（静态链接全部第三方库）
+# 产物：$PREFIX/lib/libffmpeg.so —— 静态链接的 ffmpeg 可执行文件改名，
+#      供 App 用 Runtime.exec() 直接调用（与 Termux 版形态一致）。
+#
+# 相对上一版 build.sh 的修正：
+#   1. 每个库独立容错：失败只记录并继续 → 一轮 CI 暴露所有问题
+#   2. ffmpeg 的 --enable-libxxx 按"实际编出的库"动态拼装，绝不因缺库 configure 失败
+#   3. 库版本钉死（tag/版本号），可复现
+#   4. 打开汇编（上一版 --disable-asm 导致没有 NEON）
+#   5. API 24（vulkan/mediacodec 需要）
+#   6. SKIP_LIBS 环境变量可临时排除某些库，便于分批调试
+# ============================================================================
 
-MAKEFLAGS="-j$(nproc)"
-export MAKEFLAGS
+set -uo pipefail
 
-# --- paths ---
-BUILD_ROOT=/tmp/ffbuild
+BUILD_ROOT=${BUILD_ROOT:-/tmp/ffbuild}
 SRC=$BUILD_ROOT/src
 PREFIX=$BUILD_ROOT/install
+LOGDIR=$BUILD_ROOT/logs
+NDK_VER=android-ndk-r27c
 NDK_ROOT=$BUILD_ROOT/ndk
 TOOLCHAIN=$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64
 SYSROOT=$TOOLCHAIN/sysroot
 TARGET=aarch64-linux-android
-API=21
+API=24
+FFMPEG_VER=9.0.2
 
-export CC=${TOOLCHAIN}/bin/${TARGET}${API}-clang
-export CXX=${TOOLCHAIN}/bin/${TARGET}${API}-clang++
-export AR=${TOOLCHAIN}/bin/llvm-ar
-export NM=${TOOLCHAIN}/bin/llvm-nm
-export RANLIB=${TOOLCHAIN}/bin/llvm-ranlib
-export STRIP=${TOOLCHAIN}/bin/llvm-strip
-export LD=${TOOLCHAIN}/bin/ld.lld
+CC=$TOOLCHAIN/bin/${TARGET}${API}-clang
+CXX=$TOOLCHAIN/bin/${TARGET}${API}-clang++
+AR=$TOOLCHAIN/bin/llvm-ar
+NM=$TOOLCHAIN/bin/llvm-nm
+RANLIB=$TOOLCHAIN/bin/llvm-ranlib
+STRIP=$TOOLCHAIN/bin/llvm-strip
+READELF=$TOOLCHAIN/bin/llvm-readelf
+PKGCFG=/usr/bin/pkg-config
+
+export CC CXX AR NM RANLIB STRIP
 export PATH=$TOOLCHAIN/bin:$PATH
-export CFLAGS="-fPIC"
-export CXXFLAGS="-fPIC"
+export MAKEFLAGS="-j$(nproc)"
+export CFLAGS="-fPIC -O2 -I$PREFIX/include"
+export CXXFLAGS="-fPIC -O2 -I$PREFIX/include"
+export LDFLAGS="-L$PREFIX/lib"
+export PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig
+export PKG_CONFIG_LIBDIR=$PREFIX/lib/pkgconfig
+unset PKG_CONFIG_SYSROOT_DIR
 
-# ---- NDK Download (MUST be before using CC) ----
-mkdir -p $BUILD_ROOT
-if [ ! -d "$NDK_ROOT" ]; then
-    echo "=== Downloading Android NDK r27c ==="
-    cd $BUILD_ROOT
-    wget -q --timeout=300 https://dl.google.com/android/repository/android-ndk-r27c-linux.zip -O ndk.zip
-    unzip -q ndk.zip
-    mv android-ndk-r27c $NDK_ROOT
-    rm ndk.zip
-    echo "NDK ready"
-fi
+mkdir -p "$SRC" "$PREFIX/lib/pkgconfig" "$PREFIX/include" "$LOGDIR"
 
-mkdir -p $SRC $PREFIX
+declare -a OK=() FAILED=() SKIPPED=() ENABLE_FLAGS=()
 
-echo "=== NDK toolchain ==="
-$CC --version | head -1 || echo "(version check skipped)"
-echo "CC=$CC"
-echo "SYSROOT=$SYSROOT"
-
-# ---- Create missing symlinks for cross-prefix tools (NDK r27+ only has llvm-* variants)
-for tool in strings strip ar nm ranlib readelf objdump addr2line; do
-    if [ -f "$TOOLCHAIN/bin/llvm-$tool" ] && [ ! -f "$TOOLCHAIN/bin/${TARGET}${API}-$tool" ]; then
-        ln -sf "llvm-$tool" "$TOOLCHAIN/bin/${TARGET}${API}-$tool"
-    fi
-done
-echo "Tool symlinks created."
-
-# ---- helper: clone or fail ----
-clone_or_fail() {
-    local url=$1 dir=$2 name=$3
-    echo "  cloning $name..."
-    git clone --depth 1 "$url" "$dir" || { echo "FATAL: clone failed for $name ($url)"; exit 1; }
-    cd "$dir" || { echo "FATAL: cd $dir failed"; exit 1; }
+# ---------------- 容错执行 ----------------
+want() {  # SKIP_LIBS 里点名过的库直接跳过
+    case " ${SKIP_LIBS:-} " in *" $1 "*) return 1 ;; esac
+    return 0
 }
-
-# ---- helper: download and extract tarball ----
-fetch_tar() {
-    local url=$1 name=$2
-    echo "  downloading $name..."
-    wget -q --timeout=300 "$url" -O "$name.tar.gz" || { echo "FATAL: download $name failed"; exit 1; }
-    tar xzf "$name.tar.gz" || { echo "FATAL: extract $name failed"; exit 1; }
-    rm "$name.tar.gz"
-}
-
-# ==================== EXTERNAL LIBS ====================
-
-build_lib() {
+run_step() {
+    local name=$1 fn=$2 log=$LOGDIR/$name.log
     echo ""
-    echo "========== BUILDING $1 =========="
+    if ! want "$name"; then
+        SKIPPED+=("$name"); echo "########## [$name] SKIP_LIBS 排除 ##########"; return 0
+    fi
+    # 增量：上一轮已成功且产物仍在（配合 CI 缓存），直接跳过
+    if [ -f "$BUILD_ROOT/done/$name" ] && ls "$PREFIX/lib"/*.a >/dev/null 2>&1; then
+        OK+=("$name(cached)"); echo "########## [$name] 上轮已成功，跳过 ##########"; return 0
+    fi
+    echo "########## [$name] 开始 ##########"
+    if ( set -eo pipefail; "$fn" ) >"$log" 2>&1; then
+        OK+=("$name"); mkdir -p "$BUILD_ROOT/done"; touch "$BUILD_ROOT/done/$name"
+        echo "########## [$name] OK ##########"
+    else
+        FAILED+=("$name"); rm -f "$BUILD_ROOT/done/$name"
+        echo "########## [$name] 失败，日志尾部 ##########"
+        tail -25 "$log"
+    fi
 }
 
-# --- x264 ---
-build_lib x264
-cd $SRC
-if [ ! -f x264_done ]; then
-    rm -rf x264
-    clone_or_fail https://code.videolan.org/videolan/x264.git x264 x264
-    ./configure \
-        --host=$TARGET --cross-prefix=${TARGET}${API}- \
-        --sysroot=$SYSROOT \
-        --enable-static --enable-pic --disable-cli --disable-opencl \
-        --prefix=$PREFIX
-    make $MAKEFLAGS && make install
-    touch $SRC/x264_done
-fi
-echo "x264 DONE"
+have() { [ -e "$PREFIX/lib/$1" ]; }
 
-# --- x265 ---
-build_lib x265
-cd $SRC
-if [ ! -f x265_done ]; then
-    rm -rf x265
-    clone_or_fail https://bitbucket.org/multicoreware/x265_git.git x265 x265
-    mkdir -p build
-    cd build
-    cmake ../source \
-        -DCMAKE_SYSTEM_NAME=Android \
-        -DCMAKE_ANDROID_NDK=$NDK_ROOT \
-        -DCMAKE_ANDROID_ARCH_ABI=arm64-v8a \
-        -DCMAKE_ANDROID_API=$API \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=$PREFIX \
-        -DENABLE_SHARED=OFF -DENABLE_CLI=OFF \
-        -DENABLE_ASSEMBLY=OFF
-    make $MAKEFLAGS && make install
-    # x265 cmake doesn't install headers, do it manually
-    cp ../source/x265.h $PREFIX/include/
-    [ -f x265_config.h ] && cp x265_config.h $PREFIX/include/
-    echo "x265 headers installed"
-    touch $SRC/x265_done
-fi
-# x265 cmake doesn't create .pc, do it manually
-# Ensure lib built and installed
-echo "=== x265 .a files ==="
-find $SRC/x265 -name "*.a" 2>/dev/null || echo "No .a found in build dir"
-echo "=== PREFIX lib ==="
-ls -la $PREFIX/lib/*.a 2>/dev/null || echo "No .a in PREFIX/lib"
-
-# If libx265.a not in PREFIX, find and copy it
-if [ ! -f $PREFIX/lib/libx265.a ]; then
-    LIB265=$(find $SRC/x265 -name "libx265.a" -type f 2>/dev/null | head -1)
-    if [ -n "$LIB265" ]; then
-        echo "Copying $LIB265 to $PREFIX/lib/"
-        cp "$LIB265" $PREFIX/lib/libx265.a
+fetch() {
+    local name=$1 url=$2 dir=$3
+    if [ -d "$SRC/$dir" ] && [ -n "$(ls -A "$SRC/$dir" 2>/dev/null)" ]; then
+        echo "[$name] 源码已在，跳过下载"; return 0
+    fi
+    local tmp=$SRC/$dir.dl
+    echo "[$name] 下载 $url"
+    curl -fL --retry 3 --connect-timeout 30 -o "$tmp" "$url"
+    rm -rf "$SRC/$dir" "$tmp"; mkdir -p "$SRC/$dir"
+    tar xf "$tmp" -C "$SRC/$dir" --strip-components=1
+    rm -f "$tmp"
+}
+gitclone() {
+    local name=$1 url=$2 dir=$3 ref=${4:-}
+    if [ -d "$SRC/$dir/.git" ]; then echo "[$name] 仓库已在"; return 0; fi
+    echo "[$name] git clone $url ${ref:+@$ref}"
+    if [ -n "$ref" ]; then
+        git clone --depth 1 --branch "$ref" --recursive "$url" "$SRC/$dir"
     else
-        echo "FATAL: libx265.a not found anywhere!"
-        exit 1
+        git clone --depth 1 --recursive "$url" "$SRC/$dir"
     fi
-fi
+}
 
-# Use absolute path to avoid any linker search issues
-cat > $PREFIX/lib/pkgconfig/x265.pc << EOF
-prefix=$PREFIX
-exec_prefix=\${prefix}
-libdir=\${exec_prefix}/lib
-includedir=\${prefix}/include
-
-Name: x265
-Description: H.265/HEVC video encoder
-Version: 4.1
-Libs: \${libdir}/libx265.a
-Libs.private: -lstdc++ -lm -ldl
-Cflags: -I\${includedir}
-EOF
-echo "x265 DONE"
-
-# --- SVT-AV1 ---
-build_lib SVT-AV1
-cd $SRC
-if [ ! -f svtav1_done ]; then
-    rm -rf svt-av1
-    clone_or_fail https://gitlab.com/AOMediaCodec/SVT-AV1.git svt-av1 SVT-AV1
-    mkdir -p build
-    cd build
-    cmake .. \
-        -DCMAKE_SYSTEM_NAME=Android \
-        -DCMAKE_ANDROID_NDK=$NDK_ROOT \
-        -DCMAKE_ANDROID_ARCH_ABI=arm64-v8a \
-        -DCMAKE_ANDROID_API=$API \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=$PREFIX \
-        -DBUILD_SHARED_LIBS=OFF \
-        -DBUILD_ENC=ON -DBUILD_DEC=OFF -DBUILD_TESTING=OFF -DBUILD_APPS=OFF
-    make $MAKEFLAGS && make install
-    touch $SRC/svtav1_done
-fi
-echo "SVT-AV1 DONE"
-
-# --- libopus ---
-build_lib opus
-cd $SRC
-if [ ! -f opus_done ]; then
-    rm -rf opus
-    clone_or_fail https://github.com/xiph/opus.git opus opus
-    ./autogen.sh
-    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
-        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
-    make $MAKEFLAGS && make install
-    touch $SRC/opus_done
-fi
-echo "opus DONE"
-
-# --- libogg ---
-build_lib ogg
-cd $SRC
-if [ ! -f ogg_done ]; then
-    rm -rf ogg
-    clone_or_fail https://github.com/xiph/ogg.git ogg ogg
-    ./autogen.sh
-    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
-        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
-    make $MAKEFLAGS && make install
-    touch $SRC/ogg_done
-fi
-echo "ogg DONE"
-
-# --- libvorbis ---
-build_lib vorbis
-cd $SRC
-if [ ! -f vorbis_done ]; then
-    rm -rf vorbis
-    clone_or_fail https://github.com/xiph/vorbis.git vorbis vorbis
-    ./autogen.sh
-    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
-        --with-ogg=$PREFIX \
-        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
-    make $MAKEFLAGS && make install
-    touch $SRC/vorbis_done
-fi
-echo "vorbis DONE"
-
-# --- mp3lame (tarball) ---
-build_lib mp3lame
-cd $SRC
-if [ ! -f lame_done ]; then
-    rm -rf lame-3.100
-    wget -q --timeout=300 "https://sourceforge.net/projects/lame/files/lame/3.100/lame-3.100.tar.gz/download" -O lame.tar.gz || \
-    wget -q --timeout=300 "https://netix.dl.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz" -O lame.tar.gz || \
-    { echo "FATAL: failed to download LAME"; exit 1; }
-    tar xzf lame.tar.gz && rm lame.tar.gz
-    cd lame-3.100
-    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
-        --disable-frontend \
-        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
-    make $MAKEFLAGS && make install
-    touch $SRC/lame_done
-fi
-echo "mp3lame DONE"
-
-# --- libvpx ---
-build_lib vpx
-cd $SRC
-if [ ! -f vpx_done ]; then
-    rm -rf libvpx
-    clone_or_fail https://chromium.googlesource.com/webm/libvpx libvpx libvpx
-    ./configure --target=arm64-android-gcc --prefix=$PREFIX \
-        --enable-static --disable-shared --disable-examples --disable-tools --disable-docs \
-        --disable-unit-tests --as=yasm \
-        --extra-cflags="-fPIC"
-    make $MAKEFLAGS && make install
-    touch $SRC/vpx_done
-fi
-echo "vpx DONE"
-
-# --- freetype (cmake, needed by harfbuzz, libass) ---
-build_lib freetype
-cd $SRC
-if [ ! -f freetype_done ]; then
-    rm -rf freetype
-    git clone --depth 1 https://github.com/freetype/freetype.git freetype
-    mkdir -p freetype/build
-    cd freetype/build
-    cmake .. \
-        -DCMAKE_SYSTEM_NAME=Android \
-        -DCMAKE_ANDROID_NDK=$NDK_ROOT \
-        -DCMAKE_ANDROID_ARCH_ABI=arm64-v8a \
-        -DCMAKE_ANDROID_API=$API \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=$PREFIX \
-        -DBUILD_SHARED_LIBS=OFF
-    make $MAKEFLAGS && make install
-    touch $SRC/freetype_done
-fi
-echo "freetype DONE"
-
-# Ensure freetype2.pc exists NOW (before fontconfig needs it)
-mkdir -p $PREFIX/lib/pkgconfig
-cat > $PREFIX/lib/pkgconfig/freetype2.pc << 'EOF2'
-prefix=/tmp/ffbuild/install
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include
-Name: FreeType 2
-Version: 27.0.20
-Libs: -L${libdir} -l:libfreetype.a
-Cflags: -I${includedir}/freetype2
-EOF2
-sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/freetype2.pc
-
-# --- fribidi ---
-build_lib fribidi
-cd $SRC
-if [ ! -f fribidi_done ]; then
-    rm -rf fribidi
-    git clone --depth 1 https://github.com/fribidi/fribidi.git fribidi
-    cd fribidi
-    autoreconf -fi 2>/dev/null || true
-    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
-        --disable-docs \
-        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
-    make $MAKEFLAGS && make install || true  # man pages may fail without c2man
-    touch $SRC/fribidi_done
-fi
-# fribidi autotools may generate broken .pc, force-overwrite
-echo "=== fribidi lib check ==="
-find $SRC/fribidi -name "*.a" -o -name "*.la" 2>/dev/null
-ls -la $PREFIX/lib/libfribidi* 2>/dev/null || echo "WARN: libfribidi not in prefix"
-# If libfribidi not installed, copy from build dir
-if [ ! -f $PREFIX/lib/libfribidi.a ]; then
-    FRIBIDI_LIB=$(find $SRC/fribidi -name "libfribidi*.a" -type f 2>/dev/null | head -1)
-    if [ -n "$FRIBIDI_LIB" ]; then
-        cp "$FRIBIDI_LIB" $PREFIX/lib/libfribidi.a
-        echo "Copied: $FRIBIDI_LIB"
-    else
-        echo "FATAL: libfribidi.a not found in build dir either"
-        exit 1
+# ---------------- 三套构建体系 ----------------
+do_autotools() {
+    local d=$SRC/$1; shift
+    cd "$d"
+    if [ ! -f configure ]; then
+        if [ -f autogen.sh ]; then ./autogen.sh; else autoreconf -fiv; fi
     fi
-fi
-mkdir -p $PREFIX/lib/pkgconfig
-cat > $PREFIX/lib/pkgconfig/fribidi.pc << EOF
-prefix=$PREFIX
-exec_prefix=\${prefix}
-libdir=\${exec_prefix}/lib
-includedir=\${prefix}/include
-
-Name: fribidi
-Version: 1.0.16
-Libs: -L\${libdir} -lfribidi
-Cflags: -I\${includedir}
-EOF
-echo "fribidi DONE"
-
-# --- libpng (needed by freetype for PNG font glyphs) ---
-build_lib libpng
-cd $SRC
-if [ ! -f libpng_done ]; then
-    rm -rf libpng
-    git clone --depth 1 https://github.com/pnggroup/libpng.git libpng
-    mkdir -p libpng/build
-    cd libpng/build
-    cmake .. \
-        -DCMAKE_SYSTEM_NAME=Android \
-        -DCMAKE_ANDROID_NDK=$NDK_ROOT \
-        -DCMAKE_ANDROID_ARCH_ABI=arm64-v8a \
-        -DCMAKE_ANDROID_API=$API \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=$PREFIX \
-        -DBUILD_SHARED_LIBS=OFF \
-        -DPNG_TESTS=OFF -DPNG_TOOLS=OFF
-    make $MAKEFLAGS && make install
-    touch $SRC/libpng_done
-fi
-echo "libpng DONE"
-
-# --- harfbuzz (cmake, needs freetype) ---
-build_lib harfbuzz
-cd $SRC
-if [ ! -f harfbuzz_done ]; then
-    rm -rf harfbuzz
-    git clone --depth 1 https://github.com/harfbuzz/harfbuzz.git harfbuzz
-    mkdir -p harfbuzz/build
-    cd harfbuzz/build
-    cmake .. \
-        -DCMAKE_SYSTEM_NAME=Android \
-        -DCMAKE_ANDROID_NDK=$NDK_ROOT \
-        -DCMAKE_ANDROID_ARCH_ABI=arm64-v8a \
-        -DCMAKE_ANDROID_API=$API \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=$PREFIX \
-        -DCMAKE_PREFIX_PATH=$PREFIX \
-        -DCMAKE_FIND_ROOT_PATH=$PREFIX \
-        -DBUILD_SHARED_LIBS=OFF \
-        -DHB_HAVE_FREETYPE=ON \
-        -DHB_BUILD_TESTS=OFF \
-        -DHB_BUILD_UTILS=OFF
-    make $MAKEFLAGS && make install
-    touch $SRC/harfbuzz_done
-fi
-echo "harfbuzz DONE"
-
-# --- expat (needed by fontconfig) ---
-build_lib expat
-cd $SRC
-if [ ! -f expat_done ]; then
-    rm -rf expat
-    git clone --depth 1 https://github.com/libexpat/libexpat.git expat
-    cd expat/expat
-    ./buildconf.sh 2>/dev/null || true
-    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
-        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
-    make $MAKEFLAGS && make install
-    touch $SRC/expat_done
-fi
-echo "expat DONE"
-
-# --- libass (fontconfig is optional, libass works without it for subtitle burn) ---
-build_lib libass
-cd $SRC
-if [ ! -f libass_done ]; then
-    rm -rf libass
-    git clone --depth 1 https://github.com/libass/libass.git libass
-    cd libass
-    autoreconf -fi
-    # Find where fribidi.h actually is
-    FRIBIDI_H=$(find $PREFIX/include $SRC/fribidi -name fribidi.h -type f 2>/dev/null | head -1)
-    if [ -z "$FRIBIDI_H" ]; then
-        echo "FATAL: fribidi.h not found in prefix or source"
-        exit 1
-    fi
-    FRIBIDI_CFLAGS="-I$(dirname $FRIBIDI_H)"
-    echo "FRIBIDI header: $FRIBIDI_H"
-    # Copy header to prefix if not already there
-    if [[ "$FRIBIDI_H" != "$PREFIX/include"* ]]; then
-        mkdir -p $PREFIX/include/fribidi
-        find $SRC/fribidi -name "*.h" -exec cp {} $PREFIX/include/fribidi/ \;
-    fi
-    PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig \
-    FRIBIDI_CFLAGS="-I${FRIBIDI_CFLAGS#-I}" \
-    FRIBIDI_LIBS="-L$PREFIX/lib -lfribidi" \
-    FREETYPE_CFLAGS="-I$PREFIX/include/freetype2" \
-    FREETYPE_LIBS="-L$PREFIX/lib -l:libfreetype.a" \
-    HARFBUZZ_CFLAGS="-I$PREFIX/include/harfbuzz" \
-    HARFBUZZ_LIBS="-L$PREFIX/lib -l:libharfbuzz.a" \
-    ./configure --host=$TARGET --prefix=$PREFIX --enable-static --disable-shared \
-        --disable-require-system-font-provider \
-        CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
-    make $MAKEFLAGS && make install
-    touch $SRC/libass_done
-fi
-echo "libass DONE"
-
-# --- Ensure ALL subtitle .pc files are PERFECT ---
-echo "=== Creating/verifying all .pc files ==="
-mkdir -p $PREFIX/lib/pkgconfig
-
-cat > $PREFIX/lib/pkgconfig/freetype2.pc << 'EOF2'
-prefix=/tmp/ffbuild/install
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include
-Name: FreeType 2
-Description: A free, high-quality, and portable font engine.
-Version: 27.0.20
-Libs: -L${libdir} -l:libfreetype.a
-Cflags: -I${includedir}/freetype2
-EOF2
-sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/freetype2.pc
-
-cat > $PREFIX/lib/pkgconfig/fribidi.pc << 'EOF2'
-prefix=/tmp/ffbuild/install
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include
-Name: fribidi
-Description: GNU FriBidi
-Version: 1.0.16
-Libs: -L${libdir} -l:libfribidi.a
-Cflags: -I${includedir}/fribidi
-EOF2
-sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/fribidi.pc
-
-cat > $PREFIX/lib/pkgconfig/harfbuzz.pc << 'EOF2'
-prefix=/tmp/ffbuild/install
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include
-Name: harfbuzz
-Description: HarfBuzz text shaping library
-Version: 11.2.0
-Libs: -L${libdir} -l:libharfbuzz.a -l:libfreetype.a
-Cflags: -I${includedir}/harfbuzz
-EOF2
-sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/harfbuzz.pc
-
-cat > $PREFIX/lib/pkgconfig/fontconfig.pc << 'EOF2'
-prefix=/tmp/ffbuild/install
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include
-Name: Fontconfig
-Description: Font configuration and customization library
-Version: 2.16.0
-Requires: freetype2
-Libs: -L${libdir} -l:libfontconfig.a
-Cflags: -I${includedir}
-EOF2
-sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/fontconfig.pc
-
-cat > $PREFIX/lib/pkgconfig/libass.pc << 'EOF2'
-prefix=/tmp/ffbuild/install
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include
-Name: libass
-Description: LibASS is an SSA/ASS subtitles rendering library
-Version: 0.17.3
-Requires: fribidi >= 0.19.0, freetype2 >= 9.17.3
-Libs: -L${libdir} -l:libass.a
-Cflags: -I${includedir}
-EOF2
-sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/libass.pc
-
-# --- libmp3lame.pc (headers in include/lame/) ---
-cat > $PREFIX/lib/pkgconfig/libmp3lame.pc << 'EOF2'
-prefix=/tmp/ffbuild/install
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include
-Name: libmp3lame
-Description: MP3 encoding library
-Version: 3.100
-Libs: -L${libdir} -lmp3lame
-Cflags: -I${includedir}/lame
-EOF2
-sed -i "s|/tmp/ffbuild/install|$PREFIX|g" $PREFIX/lib/pkgconfig/libmp3lame.pc
-
-echo "Checking .pc files:"
-PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion fribidi 2>&1
-PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion libass 2>&1
-echo "=== .pc files OK ==="
-
-# --- libaom ---
-build_lib aom
-cd $SRC
-if [ ! -f aom_done ]; then
-    rm -rf aom
-    clone_or_fail https://aomedia.googlesource.com/aom aom aom
-    mkdir -p build
-    cd build
-    cmake .. \
-        -DCMAKE_SYSTEM_NAME=Android \
-        -DCMAKE_ANDROID_NDK=$NDK_ROOT \
-        -DCMAKE_ANDROID_ARCH_ABI=arm64-v8a \
-        -DCMAKE_ANDROID_API=$API \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=$PREFIX \
-        -DBUILD_SHARED_LIBS=OFF \
-        -DENABLE_TESTS=OFF -DENABLE_DOCS=OFF -DENABLE_TESTDATA=OFF
-    make $MAKEFLAGS && make install
-    touch $SRC/aom_done
-fi
-echo "aom DONE"
-
-# ==================== FFMPEG ====================
-
-build_lib FFmpeg
-cd $SRC
-FFMPEG_VER=8.1.1
-if [ ! -f ffmpeg_done ]; then
-    rm -rf ffmpeg-$FFMPEG_VER
-    if [ ! -f ffmpeg-$FFMPEG_VER.tar.xz ]; then
-        wget -q --timeout=300 https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VER.tar.xz
-    fi
-    tar xf ffmpeg-$FFMPEG_VER.tar.xz
-    cd ffmpeg-$FFMPEG_VER
-
-    export PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig:$PREFIX/share/pkgconfig
-    export CFLAGS="-I$PREFIX/include -fPIC -DPIC"
-    export LDFLAGS="-L$PREFIX/lib -lm -lz -ldl -static-libstdc++"
-    export ASFLAGS="-DPIC"
-
-    echo "=== PKG-CONFIG DEBUG ==="
-    which pkg-config
-    for pkg in aom x264 x265 opus ogg vorbis vpx libmp3lame SvtAv1Enc; do
-        echo -n "  $pkg: "
-        PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig pkg-config --modversion $pkg 2>&1 || echo "MISSING"
-    done
-    echo "=== HEADER CHECK ==="
-    find $PREFIX/include -name "x265*.h" -o -name "x264*.h" -o -name "aom*.h" 2>/dev/null | head -20
-    echo "=== opus .pc ==="
-    cat $PREFIX/lib/pkgconfig/opus.pc 2>&1 || echo "NO opus.pc"
-    echo "=== x265 .pc ==="
-    cat $PREFIX/lib/pkgconfig/x265.pc 2>&1 || echo "NO x265.pc"
-    echo "=== END DEBUG ==="
-
-    set +e
-    ./configure \
-        --cross-prefix=${TARGET}${API}- \
-        --cc=${CC} --cxx=${CXX} --ld=${CC} \
-        --ar=${AR} --nm=${NM} --ranlib=${RANLIB} \
-        --pkg-config=/usr/bin/pkg-config \
-        --pkg-config-flags=--static \
-        --extra-cflags="-fPIC -DPIC" \
-        --enable-cross-compile --target-os=android --arch=aarch64 \
-        --enable-gpl --enable-version3 \
-        --enable-libx264 --enable-libx265 --enable-libvpx \
-        --enable-libopus --enable-libmp3lame --enable-libvorbis \
-        --enable-libaom --enable-libsvtav1 \
-        --enable-libass --enable-libfreetype --enable-libfribidi --enable-libharfbuzz \
-        --enable-mediacodec --enable-jni \
-        --enable-small \
-        --enable-static --disable-shared \
-        --disable-asm \
-        --disable-ffplay --disable-ffprobe --disable-avdevice \
-        --disable-doc --disable-debug \
-        --prefix=$PREFIX
-    cfg_rc=$?
-    if [ $cfg_rc -ne 0 ]; then
-        echo "=== CONFIG FAILED ==="
-        echo "=== config.log tail ==="
-        tail -50 ffbuild/config.log
-        exit $cfg_rc
-    fi
-    set -e
-
-    echo "=== Config exit code: $? ==="
-    echo "=== Config done, starting make ==="
-    make $MAKEFLAGS
-    echo "=== Make exit code: $? ==="
+    ./configure --prefix="$PREFIX" --host="$TARGET$API" \
+        --enable-static --disable-shared --disable-doc "$@"
+    make -j"$(nproc)"
     make install
-    touch $SRC/ffmpeg_done
+}
+do_cmake() {
+    local d=$SRC/$1; shift
+    rm -rf "$d/build"; mkdir -p "$d/build"; cd "$d/build"
+    cmake -DCMAKE_TOOLCHAIN_FILE="$NDK_ROOT/build/cmake/android.toolchain.cmake" \
+        -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-$API \
+        -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF "$@" ..
+    cmake --build . -j"$(nproc)"
+    cmake --install .
+}
+do_meson() {
+    local d=$SRC/$1; shift
+    rm -rf "$d/build"
+    meson setup "$d/build" "$d" --cross-file "$BUILD_ROOT/cross.txt" \
+        --prefix="$PREFIX" --default-library=static --buildtype=release "$@"
+    ninja -C "$d/build"
+    ninja -C "$d/build" install
+}
+
+write_pc() {  # write_pc <名> <版本> <Libs> [Cflags额外]
+    cat > "$PREFIX/lib/pkgconfig/$1.pc" <<EOF
+prefix=$PREFIX
+libdir=\${prefix}/lib
+includedir=\${prefix}/include
+Name: $1
+Description: $1
+Version: $2
+Libs: -L\${libdir} $3
+Cflags: -I\${includedir} ${4:-}
+EOF
+}
+
+# ---------------- meson 交叉配置（上一版 fontconfig 就是卡在这）----------
+cat > "$BUILD_ROOT/cross.txt" <<EOF
+[binaries]
+c = '$CC'
+cpp = '$CXX'
+ar = '$AR'
+strip = '$STRIP'
+nm = '$NM'
+ranlib = '$RANLIB'
+pkgconfig = '$PKGCFG'
+python = '$(command -v python3)'
+
+[built-in options]
+c_args = ['--target=$TARGET$API', '--sysroot=$SYSROOT', '-fPIC', '-O2', '-I$PREFIX/include']
+c_link_args = ['-L$PREFIX/lib']
+cpp_args = ['--target=$TARGET$API', '--sysroot=$SYSROOT', '-fPIC', '-O2', '-I$PREFIX/include']
+cpp_link_args = ['-L$PREFIX/lib', '-static-libstdc++']
+
+[host_machine]
+system = 'android'
+cpu_family = 'aarch64'
+cpu = 'arm64'
+endian = 'little'
+
+[properties]
+sys_root = '$SYSROOT'
+pkg_config_libdir = '$PREFIX/lib/pkgconfig'
+needs_exe_wrapper = false
+EOF
+
+# ---------------- NDK ----------------
+if [ ! -d "$NDK_ROOT" ]; then
+    echo "=== 下载 NDK $NDK_VER ==="
+    cd "$BUILD_ROOT"
+    curl -fL --retry 3 -o ndk.zip "https://dl.google.com/android/repository/$NDK_VER-linux.zip"
+    unzip -q ndk.zip && mv "$NDK_VER" "$NDK_ROOT" && rm -f ndk.zip
 fi
-echo "FFmpeg DONE"
+[ -x "$CC" ] || { echo "FATAL: 找不到 NDK 编译器 $CC"; exit 1; }
+echo "NDK: $("$CC" --version | head -1)"
+for t in ar nm ranlib strip readelf objdump; do
+    [ -f "$TOOLCHAIN/bin/llvm-$t" ] && ln -sf "llvm-$t" "$TOOLCHAIN/bin/${TARGET}-$t"
+done
 
-# ==================== CREATE standalone EXECUTABLE ====================
+# ============================================================================
+# 第 1 层：压缩 / 文本 / 加密
+# ============================================================================
+b_zlib() {
+    fetch zlib https://zlib.net/fossils/zlib-1.3.1.tar.gz zlib
+    cd "$SRC/zlib"
+    CHOST=$TARGET$API ./configure --prefix=$PREFIX --static
+    make -j$(nproc); make install
+}
+b_bzip2() {
+    fetch bzip2 https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz bzip2
+    cd "$SRC/bzip2"
+    make -j$(nproc) libbz2.a CC=$CC AR=$AR RANLIB=$RANLIB CFLAGS="-fPIC -O2 -D_FILE_OFFSET_BITS=64"
+    install -m 644 libbz2.a $PREFIX/lib/
+    install -m 644 bzlib.h $PREFIX/include/
+    write_pc bzip2 1.0.8 "-lbz2"
+}
+b_xz() {
+    fetch xz https://github.com/tukaani-project/xz/releases/download/v5.6.3/xz-5.6.3.tar.xz xz
+    do_autotools xz --disable-xz --disable-xzdec --disable-lzmadec --disable-lzmainfo \
+        --disable-scripts --disable-nls --without-lint
+}
+b_expat() {
+    fetch expat https://github.com/libexpat/libexpat/releases/download/R_2_6_4/expat-2.6.4.tar.gz expat
+    do_cmake expat -DEXPAT_BUILD_TOOLS=OFF -DEXPAT_BUILD_EXAMPLES=OFF \
+        -DEXPAT_BUILD_TESTS=OFF -DEXPAT_BUILD_FUZZERS=OFF
+}
+b_openssl() {
+    fetch openssl https://github.com/openssl/openssl/releases/download/openssl-3.3.2/openssl-3.3.2.tar.gz openssl
+    cd "$SRC/openssl"
+    ./Configure android-arm64 no-shared no-tests no-asm no-engine no-apps \
+        --prefix=$PREFIX --openssldir=$PREFIX/ssl --sysroot=$SYSROOT \
+        "-D__ANDROID_API__=$API" "-fPIC"
+    make build_libs -j$(nproc)
+    make install_sw install_ssldirs -j$(nproc) >/dev/null
+    cp -f libcrypto.a libssl.a $PREFIX/lib/
+    write_pc openssl 3.3.2 "-lssl -lcrypto"
+    write_pc libcrypto 3.3.2 "-lcrypto -lz -ldl -lpthread"
+}
+
+# ============================================================================
+# 第 2 层：字体 / 字幕
+# ============================================================================
+b_libpng() {
+    fetch libpng https://github.com/glennrp/libpng/archive/refs/tags/v1.6.47.tar.gz libpng
+    do_cmake libpng -DPNG_SHARED=OFF -DPNG_STATIC=ON -DPNG_TESTS=OFF -DSYSTEM_ZLIB=OFF
+}
+b_freetype() {
+    fetch freetype https://github.com/freetype/freetype/archive/refs/tags/VER-2-13-3.tar.gz freetype
+    do_cmake freetype -DFT_DISABLE_HARFBUZZ=ON -DFT_DISABLE_BROTLI=ON \
+        -DFT_DISABLE_BZIP2=OFF -DFT_DISABLE_PNG=OFF
+}
+b_fribidi() {
+    fetch fribidi https://github.com/fribidi/fribidi/releases/download/v1.0.16/fribidi-1.0.16.tar.xz fribidi
+    do_autotools fribidi --with-glib=false
+}
+b_harfbuzz() {
+    fetch harfbuzz https://github.com/harfbuzz/harfbuzz/releases/download/10.2.0/harfbuzz-10.2.0.tar.xz harfbuzz
+    do_meson harfbuzz -Dtests=disabled -Ddocs=disabled -Dintrospection=disabled \
+        -Dcairo=disabled -Dglib=disabled -Dfreetype=enabled -Dbenchmark=disabled
+}
+b_fontconfig() {
+    fetch fontconfig https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.15.0.tar.xz fontconfig
+    do_meson fontconfig -Ddoc=disabled -Dtests=disabled -Dtools=disabled -Duuid=internal
+}
+b_libass() {
+    fetch libass https://github.com/libass/libass/releases/download/0.17.3/libass-0.17.3.tar.xz libass
+    if have libfontconfig.a; then
+        do_autotools libass --enable-fontconfig --disable-iconv --disable-require-system-font-provider
+    else
+        do_autotools libass --disable-fontconfig --disable-iconv --disable-require-system-font-provider
+    fi
+}
+
+# ============================================================================
+# 第 3 层：视频编码器
+# ============================================================================
+b_x264() {
+    gitclone x264 https://code.videolan.org/videolan/x264.git x264
+    cd "$SRC/x264"
+    ./configure --prefix=$PREFIX --host=$TARGET$API \
+        --cross-prefix=$TOOLCHAIN/bin/${TARGET}${API}- \
+        --enable-static --enable-pic --disable-cli --disable-opencl --disable-lavf
+    make -j$(nproc); make install
+}
+b_x265() {
+    fetch x265 https://bitbucket.org/multicoreware/x265_git/downloads/x265_4.0.1.tar.gz x265
+    local d=$SRC/x265/source
+    rm -rf "$d/build"; mkdir -p "$d/build"; cd "$d/build"
+    cmake -DCMAKE_TOOLCHAIN_FILE="$NDK_ROOT/build/cmake/android.toolchain.cmake" \
+        -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-$API -DANDROID_STL=c++_static \
+        -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PREFIX \
+        -DENABLE_SHARED=OFF -DENABLE_STATIC=ON -DENABLE_CLI=OFF \
+        -DENABLE_ASSEMBLY=ON -DENABLE_NEON=ON \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON ..
+    cmake --build . -j"$(nproc)"; cmake --install .
+    write_pc x265 4.0.1 "-lx265"
+}
+b_dav1d() {
+    fetch dav1d https://code.videolan.org/videolan/dav1d/-/archive/1.5.1/dav1d-1.5.1.tar.bz2 dav1d
+    do_meson dav1d -Dtests=false -Ddocs=false -Dasm=enabled
+}
+b_aom() {
+    gitclone aom https://aomedia.googlesource.com/aom aom v3.11.0
+    do_cmake aom -DENABLE_TESTS=OFF -DENABLE_EXAMPLES=OFF -DENABLE_TOOLS=OFF \
+        -DENABLE_DOCS=OFF -DCONFIGURE_TESTS=OFF -DAOM_TARGET_CPU=arm64 \
+        -DENABLE_NEON=ON -DCONFIG_RUNTIME_CPU_DETECT=ON
+}
+b_svtav1() {
+    fetch svtav1 https://gitlab.com/AOMediaCodec/SVT-AV1/-/archive/v2.3.0/SVT-AV1-v2.3.0.tar.bz2 svtav1
+    do_cmake svtav1 -DBUILD_DEC=ON -DBUILD_TEST=OFF
+    write_pc SvtAv1EncLib 2.3.0 "-lSvtAv1Enc"
+    write_pc SvtAv1DecLib 2.3.0 "-lSvtAv1Dec"
+}
+b_rav1e() {
+    command -v cargo >/dev/null || { echo "没有 cargo，跳过 rav1e"; return 1; }
+    rustup target add aarch64-linux-android >/dev/null 2>&1 || true
+    gitclone rav1e https://github.com/xiph/rav1e.git rav1e v0.7.1
+    cd "$SRC/rav1e"
+    mkdir -p .cargo
+    cat > .cargo/config.toml <<EOF
+[target.aarch64-linux-android]
+ar = "$AR"
+linker = "$CC"
+rustflags = ["-C", "link-arg=--sysroot=$SYSROOT", "-C", "link-arg=-static-libstdc++",
+             "-C", "link-arg=-L$PREFIX/lib"]
+EOF
+    cargo build --release --target aarch64-linux-android
+    install -m 644 target/aarch64-linux-android/release/librav1e.a $PREFIX/lib/
+    install -m 644 rav1e.h $PREFIX/include/
+    write_pc rav1e 0.7.1 "-lrav1e -lcsydyz -lnum_bigint -lnum_traits"
+}
+b_vpx() {
+    fetch vpx https://github.com/webmproject/libvpx/archive/refs/tags/v1.15.0.tar.gz vpx
+    cd "$SRC/vpx"
+    ./configure --prefix=$PREFIX --target=arm64-android-gcc \
+        --enable-static --disable-shared --disable-examples --disable-unit-tests \
+        --disable-tools --disable-docs --disable-better-hw-compression \
+        --extra-cflags="-fPIC -I$PREFIX/include" --extra-ldflags="-L$PREFIX/lib"
+    make -j$(nproc) libs
+    make install
+}
+b_xvid() {
+    fetch xvid https://downloads.xvid.com/downloads/xvidcore-1.3.7.tar.bz2 xvid
+    cd "$SRC/xvid/build/generic"
+    ./configure --prefix=$PREFIX --host=$TARGET$API --build=x86_64-pc-linux-gnu
+    make -j$(nproc)
+    install -d $PREFIX/lib && cp -f xvidcore.a $PREFIX/lib/
+    write_pc xvidcore 1.3.7 "-lxvidcore"
+}
+
+# ============================================================================
+# 第 4 层：音频编码器
+# ============================================================================
+b_opus()   { fetch opus https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz opus; do_autotools opus --disable-extra-programs --disable-assertions; }
+b_ogg()    { fetch ogg https://downloads.xiph.org/releases/ogg/libogg-1.3.5.tar.xz ogg; do_autotools ogg; }
+b_vorbis() { fetch vorbis https://downloads.xiph.org/releases/vorbis/libvorbis-1.3.7.tar.xz vorbis; do_autotools vorbis; }
+b_theora() { fetch theora https://downloads.xiph.org/releases/theora/libtheora-1.1.1.tar.xz theora; do_autotools theora --disable-examples --disable-spec; }
+b_lame()   { fetch lame https://sourceforge.net/projects/lame/files/lame/3.100/lame-3.100.tar.gz lame; do_autotools lame --disable-frontend; }
+b_amrnb()  { fetch amr https://sourceforge.net/projects/opencore-amr/files/opencore-amr/opencore-amr-0.1.6.tar.gz opencore-amr; do_autotools opencore-amr; }
+b_amrwb()  { fetch voamr https://sourceforge.net/projects/opencore-amr/files/vo-amrwbenc/vo-amrwbenc-0.1.3.tar.gz vo-amrwbenc; do_autotools vo-amrwbenc; }
+b_gme()    { gitclone gme https://bitbucket.org/mpyne/game-music-emu.git gme; do_cmake gme; }
+b_mpg123() { fetch mpg123 https://mpg123.de/mpg123-1.32.9.tar.bz2 mpg123; do_autotools mpg123 --disable-modules --disable-network --with-realtime=none; }
+b_openmpt() {
+    fetch openmpt "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.13.0%2Bautotools.tar.gz" openmpt
+    do_autotools openmpt --disable-openmpt123 --disable-tests --disable-example \
+        --without-sdl --without-liblzo2 --enable-mpg123
+}
+b_soxr()   { fetch soxr https://sourceforge.net/projects/soxr/files/soxr-0.1.3-Source.tar.xz soxr; do_cmake soxr -DWITH_LSP_DEMO=OFF -DBUILD_TESTS=OFF -DHAVE_AVX_P6=OFF -DHAVE_AVX=OFF -DHAVE_SSE2=OFF -DHAVE_SSE3=OFF; }
+b_bs2b()   { fetch bs2b https://sourceforge.net/projects/bs2b/files/libbs2b/3.1.0/libbs2b-3.1.0.tar.gz bs2b; do_autotools bs2b; write_pc libbs2b 3.1.0 "-lbs2b"; }
+b_fftw()   { fetch fftw https://fftw.org/fftw-3.3.10.tar.gz fftw; do_autotools fftw --enable-single --disable-float128 --without-python; }
+b_samplerate() { fetch samplerate https://github.com/libsndfile/libsamplerate/releases/download/0.2.2/libsamplerate-0.2.2.tar.xz samplerate; do_cmake samplerate -DBUILD_TESTING=OFF -DLIBSAMPLERATE_EXAMPLES=OFF; }
+b_rubberband() {
+    fetch rubberband https://breakfastquay.com/files/releases/rubberband-4.0.0.tar.bz2 rubberband
+    do_autotools rubberband --disable-rubberband-cli --disable-simd
+    write_pc rubberband-2.0 4.0.0 "-lrubberband -lsamplerate -lfftw3"
+}
+
+# ============================================================================
+# 第 5 层：滤镜 / 图像 / 质量测量
+# ============================================================================
+b_zimg()    { fetch zimg https://github.com/sekrit-twc/zimg/archive/refs/tags/release-3.0.5.tar.gz zimg; do_autotools zimg --disable-tests; }
+b_vidstab() { fetch vidstab https://public.hronopik.de/vid.stab/files/libvidstab-1.1.1.tar.gz vidstab; do_cmake vidstab; }
+b_mysofa()  { fetch mysofa https://github.com/hoene/libmysofa/archive/refs/tags/v1.3.2.tar.gz mysofa; do_cmake mysofa -DJSON_TESTS=OFF -DCMOD_TESTS=OFF; }
+b_lcms2()   { fetch lcms2 https://github.com/mm2/Little-CMS/archive/refs/tags/lcms2.14.tar.gz lcms2; do_autotools lcms2; }
+b_webp()    {
+    fetch webp https://github.com/webmproject/libwebp/archive/refs/tags/v1.4.0.tar.gz webp
+    do_cmake webp -DWEBP_BUILD_ANIM_UTILS=OFF -DWEBP_BUILD_CWEBP=OFF -DWEBP_BUILD_DWEBP=OFF \
+        -DWEBP_BUILD_GIF2WEBP=OFF -DWEBP_BUILD_IMG2WEBP=OFF -DWEBP_BUILD_VWEBP=OFF \
+        -DWEBP_BUILD_EXTRAS=OFF -DWEBP_HAVE_NEON=ON
+}
+b_brotli()  { fetch brotli https://github.com/google/brotli/archive/refs/tags/v1.1.0.tar.gz brotli; do_cmake brotli; }
+b_highway() { fetch highway https://github.com/google/highway/archive/refs/tags/1.2.0.tar.gz highway; do_cmake highway -DHWY_ENABLE_CONTRIB=OFF -DBUILD_TESTING=OFF; }
+b_jxl()     {
+    gitclone jxl https://github.com/libjxl/libjxl.git jxl v0.11.1
+    do_cmake jxl -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF \
+        -DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF \
+        -DJPEGXL_ENABLE_PLUGINS=OFF -DJPEGXL_ENABLE_SKCMS=OFF \
+        -DJPEGXL_FORCE_SYSTEM_BROTLI=ON -DJPEGXL_ENABLE_VIEWERS=OFF
+}
+b_vmaf() {
+    fetch vmaf https://github.com/Netflix/vmaf/archive/refs/tags/v3.0.0.tar.gz vmaf
+    cd "$SRC/vmaf/libvmaf"
+    rm -rf build
+    meson setup build . --cross-file "$BUILD_ROOT/cross.txt" --prefix=$PREFIX \
+        --default-library=static --buildtype=release \
+        -Denable_tests=false -Denable_docs=false -Dbuilt_in_models=true -Dasm=true
+    ninja -C build; ninja -C build install
+}
+
+# ============================================================================
+# 第 6 层：Vulkan / GPU（清单里最重）
+# ============================================================================
+b_glslang() {
+    fetch glslang https://github.com/KhronosGroup/glslang/archive/refs/tags/15.1.0.tar.gz glslang
+    do_cmake glslang -DENABLE_OPT=OFF -DGLSLANG_TESTS=OFF -DENABLE_HLSL=OFF -DBUILD_TESTING=OFF
+}
+b_placebo() {
+    fetch placebo https://code.videolan.org/videolan/libplacebo/-/archive/v6.338.0/libplacebo-v6.338.0.tar.bz2 placebo
+    cd "$SRC/placebo"
+    git submodule update --init --depth 1 src/vulkan src/gl 2>/dev/null || true
+    do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=true \
+        -Ddemos=false -Dtests=false -Dopengl=disabled -Dgles=disabled
+}
+
+# ============================================================================
+# 第 7 层：网络 / 容器 / 光盘
+# ============================================================================
+b_xml2() {
+    fetch xml2 https://github.com/GNOME/libxml2/archive/refs/tags/v2.13.5.tar.gz xml2
+    do_cmake xml2 -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_ICONV=OFF \
+        -DLIBXML2_WITH_TESTS=OFF -DLIBXML2_WITH_PROGRAMS=OFF \
+        -DLIBXML2_WITH_ZLIB=ON -DLIBXML2_WITH_LZMA=ON
+}
+b_srt() {
+    fetch srt https://github.com/Haivision/srt/archive/refs/tags/v1.5.3.tar.gz srt
+    if have libcrypto.a; then
+        do_cmake srt -DENABLE_SHARED=OFF -DENABLE_STATIC=ON -DENABLE_APPS=OFF \
+            -DENABLE_TESTS=OFF -DUSE_ENCLIB=openssl
+    else
+        do_cmake srt -DENABLE_SHARED=OFF -DENABLE_STATIC=ON -DENABLE_APPS=OFF \
+            -DENABLE_TESTS=OFF -DUSE_ENCLIB=mbedtls -DENABLE_MBEDTLS=OFF
+    fi
+}
+b_libssh() { fetch libssh https://www.libssh.org/archive/libssh-0.11.1.tar.xz libssh; do_cmake libssh -DWITH_EXAMPLES=OFF -DWITH_GSSAPI=OFF -DWITH_SERVER=OFF -DUNIT_TESTING=OFF -DWITH_ZLIB=ON; }
+b_zmq()    { fetch zmq https://github.com/zeromq/libzmq/releases/download/v4.3.5/zeromq-4.3.5.tar.gz zmq; do_cmake zmq -DZMQ_BUILD_TESTS=OFF -DWITH_LIBSODIUM=OFF -DWITH_TLS=OFF; }
+b_bluray() { fetch bluray https://download.videolan.org/pub/videolan/libbluray/1.3.4/libbluray-1.3.4.tar.xz bluray; do_autotools bluray --disable-bdjava-jar --disable-examples; }
+b_dvdread() { fetch dvdread https://download.videolan.org/pub/videolan/libdvdread/6.1.2/libdvdread-6.1.2.tar.xz dvdread; do_autotools dvdread --with-libcss=no; }
+b_dvdnav()  { fetch dvdnav https://download.videolan.org/pub/videolan/libdvdnav/6.1.1/libdvdnav-6.1.1.tar.xz dvdnav; do_autotools dvdnav --with-libcss=no; }
+
+# ============================================================================
+# 第 8 层：Android 上无意义的（X11 / V4L2 / OpenCL），试了不行就丢
+# ============================================================================
+b_xcb()  {
+    fetch xcb https://www.x.org/releases/individual/lib/xcb-1.17.1.tar.xz xcb
+    do_autotools xcb --disable-static=false
+}
+b_v4l2() {
+    fetch v4l2 https://linuxtv.org/downloads/libv4l/libv4l-1.28.1.tar.gz v4l2
+    cd "$SRC/v4l2"
+    make -j$(nproc) CC=$CC prefix=$PREFIX
+    make prefix=$PREFIX install
+}
+
+# ============================================================================
+# 执行（依赖在前）
+# ============================================================================
+run_step zlib       b_zlib
+run_step bzip2      b_bzip2
+run_step xz         b_xz
+run_step expat      b_expat
+run_step openssl    b_openssl
+run_step libpng     b_libpng
+run_step freetype   b_freetype
+run_step fribidi    b_fribidi
+run_step harfbuzz   b_harfbuzz
+run_step fontconfig b_fontconfig
+run_step libass     b_libass
+run_step x264       b_x264
+run_step x265       b_x265
+run_step dav1d      b_dav1d
+run_step aom        b_aom
+run_step svtav1     b_svtav1
+run_step rav1e      b_rav1e
+run_step vpx        b_vpx
+run_step xvid       b_xvid
+run_step opus       b_opus
+run_step ogg        b_ogg
+run_step vorbis     b_vorbis
+run_step theora     b_theora
+run_step lame       b_lame
+run_step amrnb      b_amrnb
+run_step amrwb      b_amrwb
+run_step gme        b_gme
+run_step mpg123     b_mpg123
+run_step openmpt    b_openmpt
+run_step soxr       b_soxr
+run_step bs2b       b_bs2b
+run_step fftw       b_fftw
+run_step samplerate b_samplerate
+run_step rubberband b_rubberband
+run_step zimg       b_zimg
+run_step vidstab    b_vidstab
+run_step vmaf       b_vmaf
+run_step mysofa     b_mysofa
+run_step lcms2      b_lcms2
+run_step webp       b_webp
+run_step brotli     b_brotli
+run_step highway    b_highway
+run_step jxl        b_jxl
+run_step glslang    b_glslang
+run_step placebo    b_placebo
+run_step xml2       b_xml2
+run_step srt        b_srt
+run_step libssh     b_libssh
+run_step zmq        b_zmq
+run_step bluray     b_bluray
+run_step dvdread    b_dvdread
+run_step dvdnav     b_dvdnav
+run_step xcb        b_xcb
+run_step v4l2       b_v4l2
+
+# ============================================================================
+# 按实际产物拼装 ffmpeg 开关
+# ============================================================================
+flag() {  # flag <探测文件> <ffmpeg开关>
+    if have "$1"; then ENABLE_FLAGS+=("$2"); else echo "  [缺] $2 （$1 未编出）"; fi
+}
 
 echo ""
-echo "========== Creating standalone ffmpeg executable =========="
+echo "=== 依赖产物探测 → ffmpeg 开关 ==="
+flag libx264.a              --enable-libx264
+flag libx265.a              --enable-libx265
+flag libdav1d.a             --enable-libdav1d
+flag libaom.a               --enable-libaom
+flag librav1e.a             --enable-librav1e
+flag libvpx.a               --enable-libvpx
+flag libxvidcore.a          --enable-libxvidcore
+flag libopus.a              --enable-libopus
+flag libogg.a               --enable-libogg
+flag libvorbis.a            --enable-libvorbis
+flag libtheora.a            --enable-libtheora
+flag libmp3lame.a           --enable-libmp3lame
+flag libopencore-amrnb.a    --enable-libopencore-amrnb
+flag libvo-amrwbenc.a       --enable-libvo-amrwbenc
+flag libgme.a               --enable-libgme
+flag libopenmpt.a           --enable-libopenmpt
+flag libbs2b.a              --enable-libbs2b
+flag libsoxr.a              --enable-libsoxr
+flag librubberband.a        --enable-librubberband
+flag libzimg.a              --enable-libzimg
+flag libvidstab.a           --enable-libvidstab
+flag libvmaf.a              --enable-libvmaf
+flag libmysofa.a            --enable-libmysofa
+flag liblcms2.a             --enable-liblcms2
+flag libwebp.a              --enable-libwebp
+flag libjxl.a               --enable-libjxl
+flag libxml2.a              --enable-libxml2
+flag libzmq.a               --enable-libzmq
+flag libzmq.so              --enable-libzmq
+flag libsrt.a               --enable-libsrt
+flag libssh.a               --enable-libssh
+flag libcrypto.a            --enable-openssl
+flag libbluray.a            --enable-libbluray
+flag libdvdread.a           --enable-libdvdread
+flag libdvdnav.a            --enable-libdvdnav
+flag libass.a               --enable-libass
+flag libfreetype.a          --enable-libfreetype
+flag libfribidi.a           --enable-libfribidi
+flag libharfbuzz.a          --enable-libharfbuzz
+flag libfontconfig.a        --enable-libfontconfig
+flag libxcb.a               --enable-libxcb
+flag libplacebo.a           --enable-libplacebo
+if ls "$PREFIX"/lib/libplacebo*.a >/dev/null 2>&1; then
+    grep -q -- '--enable-libplacebo' <<<" ${ENABLE_FLAGS[*]:-} " || ENABLE_FLAGS+=(--enable-libplacebo)
+fi
 
-# ffmpeg binary (built by make install) already has ALL libs statically linked
-# Just rename to libffmpeg.so for APK compatibility
-$STRIP --strip-unneeded $PREFIX/bin/ffmpeg
-cp $PREFIX/bin/ffmpeg $PREFIX/lib/libffmpeg.so
+# ============================================================================
+# FFmpeg 本体
+# ============================================================================
+echo ""
+echo "=== 成功 ${#OK[@]} / 失败 ${#FAILED[@]} / 跳过 ${#SKIPPED[@]} ==="
+echo "失败: ${FAILED[*]:-无}"
+echo "启用开关: ${ENABLE_FLAGS[*]:-}"
+
+fetch ffmpeg "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VER.tar.xz" ffmpeg
+cd "$SRC/ffmpeg"
+
+./configure \
+    --prefix=$PREFIX \
+    --pkg-config=$PKGCFG --pkg-config-flags=--static \
+    --cc=$CC --cxx=$CXX --ar=$AR --nm=$NM --ranlib=$RANLIB --strip=$STRIP \
+    --enable-cross-compile --target-os=android --arch=aarch64 --cpu=armv8-a \
+    --enable-static --disable-shared \
+    --enable-gpl --enable-version3 \
+    --enable-jni --enable-mediacodec --enable-vulkan --enable-neon \
+    --enable-indev=lavfi \
+    --extra-cflags="-I$PREFIX/include -fPIC -O2" \
+    --extra-ldflags="-L$PREFIX/lib -static-libstdc++" \
+    --extra-libs="-lm -ldl -llog -landroid -lmediandk -lz -lbz2 -llzma -lpthread" \
+    --disable-doc --disable-debug --disable-stripping \
+    ${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"}
+
+make -j$(nproc)
+make install
+
+BIN=$PREFIX/bin/ffmpeg
+[ -x "$BIN" ] || { echo "FATAL: 未产出 ffmpeg 可执行文件"; exit 1; }
+cp -f "$BIN" "$BUILD_ROOT/ffmpeg-unstripped"
+"$STRIP" --strip-unneeded "$BIN"
+cp -f "$BIN" "$PREFIX/lib/libffmpeg.so"
+chmod 755 "$PREFIX/lib/libffmpeg.so"
+
+# ============================================================================
+# 报告
+# ============================================================================
+{
+    echo "FFmpeg $FFMPEG_VER 单体构建报告  $(date -u '+%F %T UTC')"
+    echo "NDK $NDK_VER / API $API / $TARGET"
+    echo
+    echo "成功库 (${#OK[@]}): ${OK[*]}"
+    echo
+    echo "失败库 (${#FAILED[@]}): ${FAILED[*]:-无}"
+    echo
+    echo "SKIP_LIBS 排除 (${#SKIPPED[@]}): ${SKIPPED[*]:-无}"
+    echo
+    echo "ffmpeg 实际启用: ${ENABLE_FLAGS[*]}"
+    echo
+    echo "产物:"
+    ls -la "$PREFIX/lib/libffmpeg.so" "$BUILD_ROOT/ffmpeg-unstripped"
+    echo
+    echo "动态依赖:"
+    "$READELF" -d "$PREFIX/lib/libffmpeg.so" | grep -E 'NEEDED|SONAME' || true
+    echo
+    echo "内嵌 configure 行:"
+    strings -n 40 "$PREFIX/lib/libffmpeg.so" | grep -m1 'configuration:' || true
+} | tee "$BUILD_ROOT/build-report.txt"
 
 echo ""
-echo "=== RESULT ==="
-ls -lh $PREFIX/lib/libffmpeg.so
-echo ""
-echo "=== ENCODERS ==="
-$PREFIX/bin/ffmpeg -encoders 2>/dev/null | grep -E 'libx264|libx265|svt_av1|libaom|libopus|libmp3lame|libvorbis|libvpx|libass' || true
-
-echo ""
-echo "=== BUILD COMPLETE ==="
-echo "libffmpeg.so is at: $PREFIX/lib/libffmpeg.so"
+echo "=== 完成 ==="

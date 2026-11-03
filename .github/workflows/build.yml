@@ -1,12 +1,18 @@
-name: Build FFmpeg Static for Android
+name: Build FFmpeg 9.0.2 Single .so for Android arm64
 
 on:
   push:
-  workflow_dispatch:   # allow manual trigger
+  workflow_dispatch:
+    inputs:
+      skip_libs:
+        description: '临时排除的库（空格分隔，如：jxl placebo rav1e）'
+        required: false
+        default: ''
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -15,20 +21,56 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq \
-            autoconf automake libtool cmake ninja-build \
-            nasm yasm pkg-config wget git unzip xz-utils \
-            meson python3-pip
-          # fontconfig needs meson >= 1.11, ubuntu-latest has 1.3
-          sudo pip3 install --upgrade meson 2>&1 | tail -3
-          meson --version
+            autoconf automake libtool libtool-bin autoconf-archive \
+            cmake ninja-build nasm yasm pkg-config wget curl git unzip xz-utils \
+            gawk patch file python3-pip python3-setuptools python3-wheel
+          sudo pip3 install --upgrade meson
+          meson --version; ninja --version; cmake --version | head -1
+
+      - name: Install Rust (for librav1e)
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Cache NDK + 已构建的库
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/ffbuild/ndk
+            /tmp/ffbuild/src
+            /tmp/ffbuild/install
+            /tmp/ffbuild/done
+          key: ffbuild-ndk27c-api24-v2-${{ hashFiles('build.sh') }}
+          restore-keys: |
+            ffbuild-ndk27c-api24-v2-
+            ffbuild-
 
       - name: Build
+        env:
+          SKIP_LIBS: ${{ github.event.inputs.skip_libs }}
         run: |
           chmod +x build.sh
           ./build.sh
 
-      - name: Upload artifact
+      - name: Upload 单文件产物
         uses: actions/upload-artifact@v4
         with:
           name: libffmpeg-android-arm64
           path: /tmp/ffbuild/install/lib/libffmpeg.so
+          if-no-files-found: error
+
+      - name: Upload 未 strip 版本（便于调试）
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-unstripped
+          path: /tmp/ffbuild/ffmpeg-unstripped
+          if-no-files-found: warn
+
+      - name: Upload 构建报告与日志
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-report
+          path: |
+            /tmp/ffbuild/build-report.txt
+            /tmp/ffbuild/logs
+          if-no-files-found: warn

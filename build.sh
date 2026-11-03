@@ -277,11 +277,14 @@ b_expat() {
 b_openssl() {
     fetch openssl https://github.com/openssl/openssl/releases/download/openssl-3.3.2/openssl-3.3.2.tar.gz openssl
     cd "$SRC/openssl"
-    export CROSS_COMPILE=$TOOLCHAIN/bin/${TARGET}${API}-
-    ./Configure android-arm64 no-shared no-tests no-asm no-engine no-apps \
+    env -u CROSS_COMPILE ./Configure android-arm64 no-shared no-tests no-asm no-engine no-apps \
         --prefix=$PREFIX --openssldir=$PREFIX/ssl --sysroot=$SYSROOT \
-        -D__ANDROID_API__=$API -fPIC
-    [ -f Makefile ] || { echo "openssl Configure 未生成 Makefile"; return 1; }
+        -D__ANDROID_API__=$API >"$LOGDIR/openssl-configure.log" 2>&1
+    if [ ! -f Makefile ]; then
+        echo "openssl Configure 未生成 Makefile，其输出尾部："
+        tail -20 "$LOGDIR/openssl-configure.log"
+        return 1
+    fi
     make -j"$(nproc)" >"$LOGDIR/openssl-make.log" 2>&1 || { tail -20 "$LOGDIR/openssl-make.log"; return 1; }
     make install_sw install_ssldirs >>"$LOGDIR/openssl-make.log" 2>&1 || \
         make install_sw >>"$LOGDIR/openssl-make.log" 2>&1 || true
@@ -586,7 +589,6 @@ run_step x265       b_x265 libx265.a
 run_step dav1d      b_dav1d libdav1d.a
 run_step aom        b_aom libaom.a
 run_step svtav1     b_svtav1 libSvtAv1Enc.a
-run_step rav1e      b_rav1e librav1e.a
 run_step vpx        b_vpx libvpx.a
 run_step xvid       b_xvid
 run_step opus       b_opus
@@ -635,7 +637,6 @@ flag libx264.a              --enable-libx264
 flag libx265.a              --enable-libx265
 flag libdav1d.a             --enable-libdav1d
 flag libaom.a               --enable-libaom
-flag librav1e.a             --enable-librav1e
 flag libvpx.a               --enable-libvpx
 flag libxvidcore.a          --enable-libxvidcore
 flag libopus.a              --enable-libopus
@@ -692,7 +693,7 @@ if ! ./configure \
     --enable-indev=lavfi \
     --extra-cflags="-I$PREFIX/include -fPIC -O2" \
     --extra-ldflags="-L$PREFIX/lib -static-libstdc++" \
-    --extra-libs="-lm -ldl -llog -landroid -lmediandk -lz -lbz2 -llzma -lpthread" \
+    --extra-libs="-lm -ldl -llog -landroid -lmediandk -lz -lbz2 -llzma" \
     --disable-doc --disable-debug --disable-stripping \
     ${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"} >"$LOGDIR/ffmpeg-configure.log" 2>&1; then
     FF_OK=0

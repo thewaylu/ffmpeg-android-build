@@ -95,7 +95,7 @@ fetch() {
     # 确认不是 HTML 错误页（gzip/xz/bzip2 的魔数）
     local magic=$(od -An -tx1 -N2 "$tmp" 2>/dev/null | tr -d ' \n')
     case "$magic" in
-        1f8b*|425a|fd75|504b*) ;;   # gz / bz2 / xz / zip
+        1f8b*|425a*|fd37*|504b*) ;;   # gz / bz2 / xz / zip
         *) echo "[$name] 下载内容不像压缩包（magic=$magic），可能是错误页"; rm -f "$tmp"; return 1 ;;
     esac
     rm -rf "$SRC/$dir"
@@ -233,8 +233,10 @@ if [ ! -x "$CC" ]; then
 fi
 echo "NDK: $("$CC" --version | head -1)"
 
-for t in ar nm ranlib strip readelf objdump; do
-    [ -f "$TOOLCHAIN/bin/llvm-$t" ] && ln -sf "llvm-$t" "$TOOLCHAIN/bin/${TARGET}-$t"
+for t in ar nm ranlib strip readelf objdump strings; do
+    [ -f "$TOOLCHAIN/bin/llvm-$t" ] || continue
+    ln -sf "llvm-$t" "$TOOLCHAIN/bin/${TARGET}-$t"
+    ln -sf "llvm-$t" "$TOOLCHAIN/bin/${TARGET}${API}-$t"
 done
 
 # ============================================================================
@@ -337,13 +339,15 @@ b_x265() {
 }
 b_dav1d() {
     fetch dav1d https://code.videolan.org/videolan/dav1d/-/archive/1.5.1/dav1d-1.5.1.tar.bz2 dav1d
-    do_meson dav1d -Dtests=false -Ddocs=false -Dasm=enabled
+    do_meson dav1d -Dasm=enabled
 }
 b_aom() {
     gitclone aom https://aomedia.googlesource.com/aom aom v3.11.0
-    do_cmake aom -DENABLE_TESTS=OFF -DENABLE_EXAMPLES=OFF -DENABLE_TOOLS=OFF \
-        -DENABLE_DOCS=OFF -DCONFIGURE_TESTS=OFF -DAOM_TARGET_CPU=arm64 \
-        -DENABLE_NEON=ON -DCONFIG_RUNTIME_CPU_DETECT=ON
+    cd "$SRC/aom"
+    ./configure --prefix=$PREFIX --target=arm64-android-gcc --enable-static \
+        --disable-shared --disable-docs --disable-tools --disable-examples \
+        --disable-unit-tests --enable-neon --runtime-cpu-detect
+    make -j"$(nproc)"; make install
 }
 b_svtav1() {
     fetch svtav1 https://gitlab.com/AOMediaCodec/SVT-AV1/-/archive/v2.3.0/SVT-AV1-v2.3.0.tar.bz2 svtav1
@@ -401,9 +405,10 @@ b_amrwb()  { fetch voamr https://sourceforge.net/projects/opencore-amr/files/vo-
 b_gme()    { gitclone gme https://bitbucket.org/mpyne/game-music-emu.git gme; do_cmake gme; }
 b_mpg123() { fetch mpg123 https://www.mpg123.de/download/mpg123-1.32.10.tar.bz2 mpg123; do_autotools mpg123 --disable-modules --disable-network --with-realtime=none; }
 b_openmpt() {
-    fetch openmpt "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.19+release.autotools.tar.gz" openmpt
-    do_autotools openmpt --disable-openmpt123 --disable-tests --disable-example \
-        --without-sdl --without-liblzo2 --enable-mpg123
+    fetch openmpt "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.19+release.makefile.tar.gz" openmpt
+    make -C "$SRC/openmpt" -j"$(nproc)" PREFIX=$PREFIX NO_REVISION=1
+    make -C "$SRC/openmpt" install PREFIX=$PREFIX NO_REVISION=1
+    write_pc libopenmpt 0.7.19 "-lopenmpt -lm -lstdc++"
 }
 b_soxr()   { fetch soxr https://sourceforge.net/projects/soxr/files/soxr-0.1.3-Source.tar.xz soxr; do_cmake soxr -DWITH_LSP_DEMO=OFF -DBUILD_TESTS=OFF -DHAVE_AVX_P6=OFF -DHAVE_AVX=OFF -DHAVE_SSE2=OFF -DHAVE_SSE3=OFF; }
 b_bs2b()   { fetch bs2b https://sourceforge.net/projects/bs2b/files/libbs2b/3.1.0/libbs2b-3.1.0.tar.gz bs2b; do_autotools bs2b; write_pc libbs2b 3.1.0 "-lbs2b"; }
@@ -419,8 +424,8 @@ b_rubberband() {
 # 第 5 层：滤镜 / 图像 / 质量测量
 # ============================================================================
 b_zimg()    { fetch zimg https://github.com/sekrit-twc/zimg/archive/refs/tags/release-3.0.5.tar.gz zimg; do_autotools zimg --disable-tests; }
-b_vidstab() { fetch vidstab https://github.com/openkylin/libvidstab/archive/refs/tags/upstream/1.1.0.tar.gz vidstab; do_cmake vidstab; }
-b_mysofa()  { fetch mysofa https://github.com/hoene/libmysofa/archive/refs/tags/v1.3.2.tar.gz mysofa; do_cmake mysofa -DJSON_TESTS=OFF -DCMOD_TESTS=OFF; }
+b_vidstab() { fetch vidstab https://github.com/openkylin/libvidstab/archive/refs/tags/upstream/1.1.0.tar.gz vidstab; do_cmake vidstab -DUSE_SSE2=OFF; }
+b_mysofa()  { fetch mysofa https://github.com/hoene/libmysofa/archive/refs/tags/v1.3.2.tar.gz mysofa; do_cmake mysofa -DJSON_TESTS=OFF -DCMOD_TESTS=OFF -DBUILD_TESTING=OFF -DCMAKE_DISABLE_FIND_PACKAGE_CUnit=ON; }
 b_lcms2()   { fetch lcms2 https://github.com/mm2/Little-CMS/archive/refs/tags/lcms2.14.tar.gz lcms2; do_autotools lcms2; }
 b_webp()    {
     fetch webp https://github.com/webmproject/libwebp/archive/refs/tags/v1.4.0.tar.gz webp
@@ -459,7 +464,7 @@ b_placebo() {
     cd "$SRC/placebo"
     git submodule update --init --depth 1 src/vulkan src/gl 2>/dev/null || true
     do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=enabled \
-        -Ddemos=false -Dtests=false -Dgl=disabled
+        -Ddemos=false -Dtests=false
 }
 
 # ============================================================================
@@ -690,6 +695,10 @@ fi
     echo "内嵌 configure 行:"
     strings -n 40 "$PREFIX/lib/libffmpeg.so" | grep -m1 'configuration:' || true
     echo "ffmpeg 构建状态: FF_OK=$FF_OK  产物: $([ -x "$BIN" ] && echo 有 || echo 无)"
+    echo
+    echo "实际安装到 $PREFIX/lib 的静态库:"
+    ls $PREFIX/lib/*.a 2>/dev/null | xargs -n1 basename | tr '\n' ' '
+    echo
     echo
     echo "各失败库的第一条错误行:"
     for f in "${FAILED[@]:-}"; do

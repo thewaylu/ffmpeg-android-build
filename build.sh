@@ -821,6 +821,12 @@ ffmpeg_configure() {   # 用全局 VK_ON 决定是否带 --enable-vulkan
 
 VK_ON=1
 DROPPED=()
+# 链接前清掉依赖库里所有 shared 副本：只要 $PREFIX/lib 里还留着 libxxx.so，
+# 链接器就会优先选中它，单体里于是出现 NEEDED libxxx.so —— 只留 .a 才能杜绝
+echo ""
+echo "=== 清除依赖库的 .so 副本（强制全部走静态）==="
+find $PREFIX/lib -maxdepth 1 -name '*.so*' -print -delete 2>/dev/null | sed 's|.*/|  删除 |'
+
 # 自动降级：vulkan 先试，失败就摘掉它；之后 configure 报"某库 not found"，
 # 就把那个开关临时摘掉再试。任何一个库的探测问题都不该把整体拖成零产物。
 while :; do
@@ -868,6 +874,10 @@ if [ -x "$BIN" ]; then
             | grep -Ev "^($SYS_LIBS)$" | tr '\n' ' ')
     if [ -n "$STRAY" ]; then
         echo "=== 产物仍依赖非系统库，不算单体: $STRAY ==="
+        echo "完整 NEEDED 清单:"
+        "$READELF" -d "$PREFIX/lib/libffmpeg.so" 2>/dev/null | sed -n 's/.*NEEDED.*\[\(.*\)\]/  /p'
+        cp -f "$PREFIX/lib/libffmpeg.so" "$BUILD_ROOT/rejected-libffmpeg.so"
+        echo "（已留档为 $BUILD_ROOT/rejected-libffmpeg.so 供对比）"
         rm -f "$PREFIX/lib/libffmpeg.so"
     else
         echo "=== 单文件已产出（依赖全部为系统库）==="

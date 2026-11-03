@@ -58,7 +58,7 @@ want() {  # SKIP_LIBS 里点名过的库直接跳过
 run_step() {
     # 注意：bash 的 local 会先展开整行再赋值，所以 log 必须单独一行，
     # 否则 $name 在此时还是未定义（set -u 下直接 unbound variable）
-    local name=$1 fn=$2
+    local name=$1 fn=$2 expect=$3
     local log=$LOGDIR/$name.log
     echo ""
     if ! want "$name"; then
@@ -70,8 +70,14 @@ run_step() {
     fi
     echo "########## [$name] 开始 ##########"
     if ( set -eo pipefail; "$fn" ) >"$log" 2>&1; then
-        OK+=("$name"); mkdir -p "$BUILD_ROOT/done"; touch "$BUILD_ROOT/done/$name"
-        echo "########## [$name] OK ##########"
+        if [ -n "$expect" ] && [ ! -e "$PREFIX/lib/$expect" ]; then
+            FAILED+=("$name"); rm -f "$BUILD_ROOT/done/$name"
+            echo "########## [$name] 假成功：返回 0 但没有 $expect，日志尾部 ##########"
+            tail -25 "$log"
+        else
+            OK+=("$name"); mkdir -p "$BUILD_ROOT/done"; touch "$BUILD_ROOT/done/$name"
+            echo "########## [$name] OK ##########"
+        fi
     else
         FAILED+=("$name"); rm -f "$BUILD_ROOT/done/$name"
         echo "########## [$name] 失败，日志尾部 ##########"
@@ -302,7 +308,7 @@ b_harfbuzz() {
 }
 b_fontconfig() {
     fetch fontconfig https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.15.0.tar.xz fontconfig
-    do_meson fontconfig -Ddoc=disabled -Dtests=disabled -Dtools=disabled -Duuid=internal
+    do_meson fontconfig -Ddoc=disabled -Dtests=disabled -Dtools=disabled
 }
 b_libass() {
     fetch libass https://github.com/libass/libass/releases/download/0.17.3/libass-0.17.3.tar.xz libass
@@ -339,11 +345,12 @@ b_x265() {
 }
 b_dav1d() {
     fetch dav1d https://code.videolan.org/videolan/dav1d/-/archive/1.5.1/dav1d-1.5.1.tar.bz2 dav1d
-    do_meson dav1d -Dasm=enabled
+    do_meson dav1d
 }
 b_aom() {
-    gitclone aom https://aomedia.googlesource.com/aom aom v3.11.0
+    gitclone aom https://aomedia.googlesource.com/aom aom
     cd "$SRC/aom"
+    [ -x ./configure ] || { echo "aom 源码里没有 ./configure"; ls | head -20; return 1; }
     ./configure --prefix=$PREFIX --target=arm64-android-gcc --enable-static \
         --disable-shared --disable-docs --disable-tools --disable-examples \
         --disable-unit-tests --enable-neon --runtime-cpu-detect
@@ -368,7 +375,8 @@ linker = "$CC"
 rustflags = ["-C", "link-arg=--sysroot=$SYSROOT", "-C", "link-arg=-static-libstdc++",
              "-C", "link-arg=-L$PREFIX/lib"]
 EOF
-    cargo build --release --target aarch64-linux-android
+    cargo rustc --release --target aarch64-linux-android --lib -- --crate-type=staticlib
+    [ -f target/aarch64-linux-android/release/librav1e.a ] || { echo "rav1e 没产出 staticlib"; ls target/aarch64-linux-android/release/ | head -20; return 1; }
     install -m 644 target/aarch64-linux-android/release/librav1e.a $PREFIX/lib/
     install -m 644 rav1e.h $PREFIX/include/
     write_pc rav1e 0.7.1 "-lrav1e -lcsydyz -lnum_bigint -lnum_traits"
@@ -398,7 +406,16 @@ b_xvid() {
 b_opus()   { fetch opus https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz opus; do_autotools opus --disable-extra-programs --disable-assertions; }
 b_ogg()    { fetch ogg https://downloads.xiph.org/releases/ogg/libogg-1.3.5.tar.xz ogg; do_autotools ogg; }
 b_vorbis() { fetch vorbis https://downloads.xiph.org/releases/vorbis/libvorbis-1.3.7.tar.xz vorbis; do_autotools vorbis; }
-b_theora() { fetch theora https://downloads.xiph.org/releases/theora/libtheora-1.1.1.tar.xz theora; do_autotools theora --disable-examples --disable-spec; }
+b_theora() {
+    fetch theora https://downloads.xiph.org/releases/theora/libtheora-1.1.1.tar.xz theora
+    cd "$SRC/theora"
+    # 1.1.1 自带的 config.sub/guess 太旧，不认 aarch64-linux-android
+    for f in /usr/share/automake-*/config.sub /usr/share/automake-*/config.guess; do
+        [ -f "$f" ] && cp -f "$f" .
+    done
+    autoreconf -fiv
+    do_autotools theora --disable-examples --disable-spec
+}
 b_lame()   { fetch lame https://sourceforge.net/projects/lame/files/lame/3.100/lame-3.100.tar.gz lame; do_autotools lame --disable-frontend; }
 b_amrnb()  { fetch amr https://sourceforge.net/projects/opencore-amr/files/opencore-amr/opencore-amr-0.1.6.tar.gz opencore-amr; do_autotools opencore-amr; }
 b_amrwb()  { fetch voamr https://sourceforge.net/projects/opencore-amr/files/vo-amrwbenc/vo-amrwbenc-0.1.3.tar.gz vo-amrwbenc; do_autotools vo-amrwbenc; }
@@ -497,7 +514,7 @@ b_dvdnav()  { fetch dvdnav https://download.videolan.org/pub/videolan/libdvdnav/
 # ============================================================================
 b_xcb()  {
     fetch xcb https://www.x.org/releases/individual/lib/libxcb-1.17.0.tar.xz xcb
-    do_autotools xcb --disable-static=false
+    do_autotools xcb
 }
 b_v4l2() {
     fetch v4l2 https://linuxtv.org/downloads/libv4l/libv4l-1.28.1.tar.gz v4l2
@@ -513,29 +530,29 @@ run_step zlib       b_zlib
 run_step bzip2      b_bzip2
 run_step xz         b_xz
 run_step expat      b_expat
-run_step openssl    b_openssl
+run_step openssl    b_openssl libcrypto.a
 run_step libpng     b_libpng
 run_step freetype   b_freetype
 run_step fribidi    b_fribidi
-run_step harfbuzz   b_harfbuzz
-run_step fontconfig b_fontconfig
-run_step libass     b_libass
-run_step x264       b_x264
-run_step x265       b_x265
-run_step dav1d      b_dav1d
-run_step aom        b_aom
-run_step svtav1     b_svtav1
-run_step rav1e      b_rav1e
-run_step vpx        b_vpx
+run_step harfbuzz   b_harfbuzz libharfbuzz.a
+run_step fontconfig b_fontconfig libfontconfig.a
+run_step libass     b_libass libass.a
+run_step x264       b_x264 libx264.a
+run_step x265       b_x265 libx265.a
+run_step dav1d      b_dav1d libdav1d.a
+run_step aom        b_aom libaom.a
+run_step svtav1     b_svtav1 libSvtAv1Enc.a
+run_step rav1e      b_rav1e librav1e.a
+run_step vpx        b_vpx libvpx.a
 run_step xvid       b_xvid
 run_step opus       b_opus
 run_step ogg        b_ogg
 run_step vorbis     b_vorbis
-run_step theora     b_theora
+run_step theora     b_theora libtheora.a
 run_step lame       b_lame
 run_step amrnb      b_amrnb
 run_step amrwb      b_amrwb
-run_step gme        b_gme
+run_step gme        b_gme libgme.a
 run_step mpg123     b_mpg123
 run_step openmpt    b_openmpt
 run_step soxr       b_soxr
@@ -544,21 +561,21 @@ run_step fftw       b_fftw
 run_step samplerate b_samplerate
 run_step rubberband b_rubberband
 run_step zimg       b_zimg
-run_step vidstab    b_vidstab
+run_step vidstab    b_vidstab libvidstab.a
 run_step vmaf       b_vmaf
-run_step mysofa     b_mysofa
+run_step mysofa     b_mysofa libmysofa.a
 run_step lcms2      b_lcms2
 run_step webp       b_webp
 run_step brotli     b_brotli
 run_step highway    b_highway
-run_step jxl        b_jxl
+run_step jxl        b_jxl libjxl.a
 run_step glslang    b_glslang
-run_step placebo    b_placebo
+run_step placebo    b_placebo libplacebo.a
 run_step xml2       b_xml2
-run_step srt        b_srt
-run_step libssh     b_libssh
+run_step srt        b_srt libsrt.a
+run_step libssh     b_libssh libssh.a
 run_step zmq        b_zmq
-run_step bluray     b_bluray
+run_step bluray     b_bluray libbluray.a
 run_step dvdread    b_dvdread
 run_step dvdnav     b_dvdnav
 run_step xcb        b_xcb
@@ -644,7 +661,7 @@ if ! ./configure \
     --extra-ldflags="-L$PREFIX/lib -static-libstdc++" \
     --extra-libs="-lm -ldl -llog -landroid -lmediandk -lz -lbz2 -llzma -lpthread" \
     --disable-doc --disable-debug --disable-stripping \
-    ${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"} 2>"$LOGDIR/ffmpeg-configure.log"; then
+    ${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"} >"$LOGDIR/ffmpeg-configure.log" 2>&1; then
     FF_OK=0
     echo "!!! ffmpeg configure 失败，日志尾部："
     tail -40 "$LOGDIR/ffmpeg-configure.log"
@@ -703,9 +720,9 @@ fi
     echo "各失败库的第一条错误行:"
     for f in "${FAILED[@]:-}"; do
         [ -n "$f" ] || continue
-        line=$(grep -m1 -iE 'error:|ERROR|undefined|No such file|not found|Cannot open' \
+        line=$(grep -hE 'configure: error|^CMake Error|ERROR: |: error: |fatal error:|No such file or directory' \
                   "$LOGDIR/$f.log" "$LOGDIR/$f-configure.log" "$LOGDIR/$f-make.log" 2>/dev/null \
-                | sed 's/^[^:]*:[0-9]*:\?//' | cut -c1-200)
+                | grep -vE 'Looking for|Performing Test|Fetching value|Check for working' | head -1 | cut -c1-220)
         echo "  - $f :: ${line:-（日志里没匹配到错误行，见完整日志）}"
     done
     echo

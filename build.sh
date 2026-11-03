@@ -48,7 +48,7 @@ unset PKG_CONFIG_SYSROOT_DIR
 
 mkdir -p "$SRC" "$PREFIX/lib/pkgconfig" "$PREFIX/include" "$LOGDIR"
 
-declare -a OK=() FAILED=() SKIPPED=() ENABLE_FLAGS=()
+declare -a OK=() FAILED=() SKIPPED=() ENABLE_FLAGS=() MISSING=()
 
 # ---------------- 容错执行 ----------------
 want() {  # SKIP_LIBS 里点名过的库直接跳过
@@ -443,9 +443,14 @@ b_xvid() {
     cd "$SRC/xvid/build/generic"
     ./configure --prefix=$PREFIX --host=$TARGET --build=x86_64-pc-linux-gnu
     make -j$(nproc)
-    # xvid 产出的文件叫 xvidcore.a，ffmpeg 与探测都按 lib*.a 命名，必须补前缀
-    install -d $PREFIX/lib && cp -f xvidcore.a $PREFIX/lib/libxvidcore.a
+    # xvid 产出的文件叫 xvidcore.a，ffmpeg 与探测都按 lib*.a 命名，必须补前缀；
+    # 它的对外头在 src/xvid.h，build/generic 的 make install 并不会装它，
+    # 而 ffmpeg 的 libxvid 探测要同时看到 xvid.h + xvid_global，缺一个就整体 configure 失败。
+    install -d $PREFIX/lib $PREFIX/include
+    cp -f xvidcore.a $PREFIX/lib/libxvidcore.a
+    cp -f "$SRC/xvid/src/xvid.h" $PREFIX/include/xvid.h
     write_pc xvidcore 1.3.7 "-lxvidcore"
+    ls -l $PREFIX/lib/libxvidcore.a $PREFIX/include/xvid.h
 }
 
 # ============================================================================
@@ -571,7 +576,7 @@ b_srt() {
             -DENABLE_TESTS=OFF -DUSE_ENCLIB=mbedtls -DENABLE_MBEDTLS=OFF
     fi
 }
-b_libssh() { fetch libssh https://git.libssh.org/projects/libssh.git/snapshot/libssh-0.11.1.tar.gz libssh; do_cmake libssh -DWITH_EXAMPLES=OFF -DWITH_GSSAPI=OFF -DWITH_SERVER=OFF -DUNIT_TESTING=OFF -DWITH_ZLIB=OFF -DOPENSSL_INCLUDE_DIR=$PREFIX/include -DOPENSSL_CRYPTO_LIBRARY=$PREFIX/lib/libcrypto.a -DOPENSSL_SSL_LIBRARY=$PREFIX/lib/libssl.a; }
+b_libssh() { fetch libssh https://git.libssh.org/projects/libssh.git/snapshot/libssh-0.11.1.tar.gz libssh; do_cmake libssh -DBUILD_SHARED_LIBS=OFF -DWITH_STATIC_LIB=ON -DWITH_EXAMPLES=OFF -DWITH_GSSAPI=OFF -DWITH_SERVER=OFF -DUNIT_TESTING=OFF -DWITH_ZLIB=OFF -DOPENSSL_INCLUDE_DIR=$PREFIX/include -DOPENSSL_CRYPTO_LIBRARY=$PREFIX/lib/libcrypto.a -DOPENSSL_SSL_LIBRARY=$PREFIX/lib/libssl.a; }
 b_zmq()    { fetch zmq https://github.com/zeromq/libzmq/releases/download/v4.3.5/zeromq-4.3.5.tar.gz zmq; do_cmake zmq -DZMQ_BUILD_TESTS=OFF -DWITH_LIBSODIUM=OFF -DWITH_TLS=OFF; }
 b_bluray() { fetch bluray https://download.videolan.org/pub/videolan/libbluray/1.3.4/libbluray-1.3.4.tar.bz2 bluray; do_autotools bluray --disable-bdjava-jar --disable-examples; }
 b_dvdread() { fetch dvdread https://download.videolan.org/pub/videolan/libdvdread/6.1.2/libdvdread-6.1.2.tar.bz2 dvdread; do_autotools dvdread --with-libcss=no; }
@@ -611,7 +616,7 @@ run_step dav1d      b_dav1d libdav1d.a
 run_step aom        b_aom libaom.a
 run_step svtav1     b_svtav1 libSvtAv1Enc.a
 run_step vpx        b_vpx libvpx.a
-run_step xvid       b_xvid
+run_step xvid       b_xvid libxvidcore.a
 run_step opus       b_opus
 run_step ogg        b_ogg
 run_step vorbis     b_vorbis
@@ -646,10 +651,21 @@ run_step dvdnav     b_dvdnav
 run_step v4l2       b_v4l2
 
 # ============================================================================
+# 清掉 .pc 里的 -lpthread
+# bionic 的 pthread 符号全在 libc 内，系统里没有 libpthread；但 srt/zmq/harfbuzz
+# 等 .pc 的 Libs.private 写死 -lpthread，pkg-config --static 会把它带进 ffmpeg 的
+# 链接探测 → "unable to find library -lpthread" → configure 报 "srt not found"。
+# ============================================================================
+echo ""
+echo "=== 清理 .pc 中的 -lpthread ==="
+sed -i 's/[[:space:]]-lpthread//g' $PREFIX/lib/pkgconfig/*.pc 2>/dev/null || true
+echo "仍含 lpthread 的 pc: $(grep -l 'lpthread' $PREFIX/lib/pkgconfig/*.pc 2>/dev/null | tr '\n' ' ')"
+
+# ============================================================================
 # 按实际产物拼装 ffmpeg 开关
 # ============================================================================
 flag() {  # flag <探测文件> <ffmpeg开关>
-    if have "$1"; then ENABLE_FLAGS+=("$2"); else echo "  [缺] $2 （$1 未编出）"; fi
+    if have "$1"; then ENABLE_FLAGS+=("$2"); else MISSING+=("$2"); echo "  [缺] $2 （$1 未编出）"; fi
 }
 
 echo ""
@@ -761,6 +777,8 @@ fi
     echo "SKIP_LIBS 排除 (${#SKIPPED[@]}): ${SKIPPED[*]:-无}"
     echo
     echo "ffmpeg 实际启用: ${ENABLE_FLAGS[*]}"
+    echo
+    echo "因缺产物而未启用的开关 (${#MISSING[@]}): ${MISSING[*]:-无}"
     echo
     echo "产物:"
     ls -la "$PREFIX/lib/libffmpeg.so" "$BUILD_ROOT/ffmpeg-unstripped"

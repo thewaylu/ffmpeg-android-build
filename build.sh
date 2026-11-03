@@ -794,6 +794,10 @@ echo "启用开关: ${ENABLE_FLAGS[*]:-}"
 fetch ffmpeg "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VER.tar.xz https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n$FFMPEG_VER.tar.gz" ffmpeg
 cd "$SRC/ffmpeg"
 
+# 缓存里留着上一轮的 \$PREFIX/bin/ffmpeg。不先删掉的话，本轮 configure/make 失败也会被
+# 下面的 [ -x "\$BIN" ] 当成成功，拿旧产物冒充新结果（run#91 就是这样 2 分钟"成功"的）
+rm -f "\$PREFIX/bin/ffmpeg" "\$PREFIX/bin/ffprobe" "\$BUILD_ROOT/ffmpeg-unstripped" "\$PREFIX/lib/libffmpeg.so"
+
 FF_OK=1
 VK_STATE=启用
 ffmpeg_configure() {   # $1=novulkan 时不带 --enable-vulkan
@@ -935,8 +939,12 @@ fi
 } | tee "$BUILD_ROOT/build-report.txt"
 
 echo ""
-if [ ! -x "$BIN" ]; then
-    echo "=== 构建失败：见上面报告 ==="
+if [ $FF_OK -ne 1 ]; then
+    echo "=== 构建失败：ffmpeg configure/make 没通过，见上面报告 ==="
     exit 1
 fi
-echo "=== 完成：单文件在 $PREFIX/lib/libffmpeg.so ==="
+if [ ! -x "$PREFIX/lib/libffmpeg.so" ]; then
+    echo "=== 构建失败：没有合格单体（NEEDED 里混入了非系统库，见报告）==="
+    exit 1
+fi
+echo "=== 完成：合格单文件在 $PREFIX/lib/libffmpeg.so ==="

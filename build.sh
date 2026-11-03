@@ -95,8 +95,8 @@ fetch() {
     local tmp=$SRC/$dir.dl
     echo "[$name] 下载 $url"
     rm -f "$tmp"
-    curl -fL --retry 3 --retry-delay 5 --connect-timeout 30 -o "$tmp" "$url" || {
-        echo "[$name] 下载失败：$url"; rm -f "$tmp"; return 1; }
+    curl -fL --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 30 -o "$tmp" "$url"       || wget -c -q -T 60 -t 3 -O "$tmp" "$url" || {
+        echo "[$name] 下载失败（curl 与 wget 都试过）：$url"; rm -f "$tmp"; return 1; }
     [ -s "$tmp" ] || { echo "[$name] 下载到的文件是空的"; rm -f "$tmp"; return 1; }
     # 确认不是 HTML 错误页（gzip/xz/bzip2 的魔数）
     local magic=$(od -An -tx1 -N2 "$tmp" 2>/dev/null | tr -d ' \n')
@@ -279,7 +279,8 @@ b_expat() {
 b_openssl() {
     fetch openssl https://github.com/openssl/openssl/releases/download/openssl-3.3.2/openssl-3.3.2.tar.gz openssl
     cd "$SRC/openssl"
-    env -u CROSS_COMPILE ./Configure android-arm64 no-shared no-tests no-asm no-engine no-apps \
+    export ANDROID_NDK_ROOT=$NDK_ROOT
+    env -u CROSS_COMPILE -u CC -u CXX ./Configure android-arm64 no-shared no-tests no-asm no-engine no-apps \
         --prefix=$PREFIX --openssldir=$PREFIX/ssl --sysroot=$SYSROOT \
         -D__ANDROID_API__=$API >"$LOGDIR/openssl-configure.log" 2>&1
     if [ ! -f Makefile ]; then

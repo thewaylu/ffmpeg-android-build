@@ -56,7 +56,10 @@ want() {  # SKIP_LIBS 里点名过的库直接跳过
     return 0
 }
 run_step() {
-    local name=$1 fn=$2 log=$LOGDIR/$name.log
+    # 注意：bash 的 local 会先展开整行再赋值，所以 log 必须单独一行，
+    # 否则 $name 在此时还是未定义（set -u 下直接 unbound variable）
+    local name=$1 fn=$2
+    local log=$LOGDIR/$name.log
     echo ""
     if ! want "$name"; then
         SKIPPED+=("$name"); echo "########## [$name] SKIP_LIBS 排除 ##########"; return 0

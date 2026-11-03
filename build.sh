@@ -447,8 +447,12 @@ b_xvid() {
     # 它的对外头在 src/xvid.h，build/generic 的 make install 并不会装它，
     # 而 ffmpeg 的 libxvid 探测要同时看到 xvid.h + xvid_global，缺一个就整体 configure 失败。
     install -d $PREFIX/lib $PREFIX/include
-    cp -f xvidcore.a $PREFIX/lib/libxvidcore.a
-    cp -f "$SRC/xvid/src/xvid.h" $PREFIX/include/xvid.h
+    local xal=$(ls xvidcore.a libxvidcore.a 2>/dev/null | head -1)
+    [ -n "$xal" ] || { echo "找不到 xvid 静态库产物"; ls -l *.a */*.a 2>/dev/null; return 1; }
+    cp -f "$xal" $PREFIX/lib/libxvidcore.a
+    local xh=$(find "$SRC/xvid" -maxdepth 3 -name xvid.h 2>/dev/null | head -1)
+    [ -n "$xh" ] || { echo "找不到 xvid.h"; find "$SRC/xvid" -maxdepth 2 -type d; return 1; }
+    cp -f "$xh" $PREFIX/include/xvid.h
     write_pc xvidcore 1.3.7 "-lxvidcore"
     ls -l $PREFIX/lib/libxvidcore.a $PREFIX/include/xvid.h
 }
@@ -628,10 +632,10 @@ run_step gme        b_gme libgme.a
 run_step mpg123     b_mpg123
 run_step openmpt    b_openmpt
 run_step soxr       b_soxr
-run_step bs2b       b_bs2b
+run_step bs2b       b_bs2b libbs2b.a
 run_step fftw       b_fftw
 run_step samplerate b_samplerate
-run_step rubberband b_rubberband
+run_step rubberband b_rubberband librubberband.a
 run_step zimg       b_zimg
 run_step vmaf       b_vmaf
 run_step mysofa     b_mysofa libmysofa.a
@@ -660,6 +664,31 @@ echo ""
 echo "=== 清理 .pc 中的 -lpthread ==="
 sed -i 's/[[:space:]]-lpthread//g' $PREFIX/lib/pkgconfig/*.pc 2>/dev/null || true
 echo "仍含 lpthread 的 pc: $(grep -l 'lpthread' $PREFIX/lib/pkgconfig/*.pc 2>/dev/null | tr '\n' ' ')"
+
+# ============================================================================
+# 补一个 vulkan.pc
+# NDK sysroot 里有 vulkan/vulkan.h 和可链接的 libvulkan.so stub，但没有 pkg-config
+# 元数据；FFmpeg 9 的 vulkan 检测是按 pkg-config 找 "vulkan >= 1.3.251"，缺 .pc 就直接
+# "ERROR: vulkan requested but not found"，把整个 configure 卡死。
+# ============================================================================
+echo ""
+echo "=== 生成 vulkan.pc ==="
+VK_HDR=$(sed -n 's/^#  *define  *VK_HEADER_VERSION  *\([0-9][0-9]*\).*/\1/p' \
+            "$SYSROOT/usr/include/vulkan/vulkan_core.h" 2>/dev/null | head -1)
+VK_HDR=${VK_HDR:-275}
+[ "$VK_HDR" -ge 251 ] || VK_HDR=251
+{
+    echo "prefix=$PREFIX"
+    echo "libdir=\${prefix}/lib"
+    echo "includedir=$SYSROOT/usr/include"
+    echo "Name: Vulkan-Loader"
+    echo "Description: Vulkan Loader"
+    echo "Version: 1.3.$VK_HDR"
+    echo "Cflags: -I\${includedir}"
+    echo "Libs: -L\${libdir} -lvulkan"
+} > $PREFIX/lib/pkgconfig/vulkan.pc
+cat $PREFIX/lib/pkgconfig/vulkan.pc
+echo "pkg-config 验证: $($PKGCFG --exists --print-errors 'vulkan >= 1.3.251' 2>&1 && echo OK)  Version=$($PKGCFG --modversion vulkan 2>&1)  Cflags=$($PKGCFG --cflags vulkan 2>&1)"
 
 # ============================================================================
 # 按实际产物拼装 ffmpeg 开关
@@ -723,23 +752,38 @@ fetch ffmpeg "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VER.tar.xz https://gith
 cd "$SRC/ffmpeg"
 
 FF_OK=1
-if ! ./configure \
-    --prefix=$PREFIX \
-    --pkg-config=$PKGCFG --pkg-config-flags=--static \
-    --cc=$CC --cxx=$CXX --ar=$AR --nm=$NM --ranlib=$RANLIB --strip=$STRIP \
-    --enable-cross-compile --target-os=android --arch=aarch64 --cpu=armv8-a \
-    --enable-static --disable-shared \
-    --enable-gpl --enable-version3 \
-    --enable-jni --enable-mediacodec --enable-vulkan --enable-neon \
-    --enable-indev=lavfi \
-    --extra-cflags="-I$PREFIX/include -fPIC -O2" \
-    --extra-ldflags="-L$PREFIX/lib -static-libstdc++" \
-    --extra-libs="-lm -ldl -llog -landroid -lmediandk -lz -lbz2 -llzma -lc++_static -lc++abi" \
-    --disable-doc --disable-debug --disable-stripping \
-    ${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"} >"$LOGDIR/ffmpeg-configure.log" 2>&1; then
-    FF_OK=0
-    echo "!!! ffmpeg configure 失败，日志尾部："
-    tail -40 "$LOGDIR/ffmpeg-configure.log"
+VK_STATE=启用
+ffmpeg_configure() {   # $1=novulkan 时不带 --enable-vulkan
+    local vk=--enable-vulkan
+    [ "${1:-}" = novulkan ] && vk=
+    ./configure \
+        --prefix=$PREFIX \
+        --pkg-config=$PKGCFG --pkg-config-flags=--static \
+        --cc=$CC --cxx=$CXX --ar=$AR --nm=$NM --ranlib=$RANLIB --strip=$STRIP \
+        --enable-cross-compile --target-os=android --arch=aarch64 --cpu=armv8-a \
+        --enable-static --disable-shared \
+        --enable-gpl --enable-version3 \
+        --enable-jni --enable-mediacodec --enable-neon \
+        ${vk:+"$vk"} \
+        --enable-indev=lavfi \
+        --extra-cflags="-I$PREFIX/include -fPIC -O2" \
+        --extra-ldflags="-L$PREFIX/lib -static-libstdc++" \
+        --extra-libs="-lm -ldl -llog -landroid -lmediandk -lz -lbz2 -llzma -lc++_static -lc++abi" \
+        --disable-doc --disable-debug --disable-stripping \
+        ${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"} >"$LOGDIR/ffmpeg-configure.log" 2>&1
+}
+
+# vulkan 是硬加速接口，不是编解码器；若它检测不过，绝不该拖死整个单体构建
+if ! ffmpeg_configure; then
+    echo "!!! 带 --enable-vulkan 的 configure 失败，去掉 vulkan 重试"
+    tail -15 "$LOGDIR/ffmpeg-configure.log"
+    cp -f "$LOGDIR/ffmpeg-configure.log" "$LOGDIR/ffmpeg-configure-vulkan-attempt.log"
+    VK_STATE=降级关闭
+    if ! ffmpeg_configure novulkan; then
+        FF_OK=0
+        echo "!!! ffmpeg configure 仍失败，日志尾部："
+        tail -40 "$LOGDIR/ffmpeg-configure.log"
+    fi
 fi
 
 if [ $FF_OK -eq 1 ]; then
@@ -775,6 +819,8 @@ fi
     echo "失败库 (${#FAILED[@]}): ${FAILED[*]:-无}"
     echo
     echo "SKIP_LIBS 排除 (${#SKIPPED[@]}): ${SKIPPED[*]:-无}"
+    echo
+    echo "vulkan 状态: $VK_STATE"
     echo
     echo "ffmpeg 实际启用: ${ENABLE_FLAGS[*]}"
     echo

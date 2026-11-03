@@ -241,6 +241,8 @@ if [ ! -x "$CC" ]; then
 fi
 echo "NDK: $("$CC" --version | head -1)"
 
+ln -sf "${TARGET}${API}-clang"   "$TOOLCHAIN/bin/${TARGET}-gcc"
+ln -sf "${TARGET}${API}-clang++" "$TOOLCHAIN/bin/${TARGET}-g++"
 for t in ar nm ranlib strip readelf objdump strings; do
     [ -f "$TOOLCHAIN/bin/llvm-$t" ] || continue
     ln -sf "llvm-$t" "$TOOLCHAIN/bin/${TARGET}-$t"
@@ -434,8 +436,8 @@ b_opus()   { fetch opus https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.
 b_ogg()    { fetch ogg https://downloads.xiph.org/releases/ogg/libogg-1.3.5.tar.xz ogg; do_autotools ogg; }
 b_vorbis() { fetch vorbis https://downloads.xiph.org/releases/vorbis/libvorbis-1.3.7.tar.xz vorbis; do_autotools vorbis; }
 b_theora() {
-    fetch theora https://downloads.xiph.org/releases/theora/libtheora-1.1.1.tar.xz theora
-    cd "$SRC/theora"
+    fetch theora https://downloads.xiph.org/releases/theora/libtheora-1.1.1.tar.xz theora || return 1
+    cd "$SRC/theora" || return 1
     # 1.1.1 自带的 config.sub/guess 太旧，不认 aarch64-linux-android
     for f in /usr/share/automake-*/config.sub /usr/share/automake-*/config.guess; do
         [ -f "$f" ] && cp -f "$f" .
@@ -693,7 +695,7 @@ if ! ./configure \
     --enable-indev=lavfi \
     --extra-cflags="-I$PREFIX/include -fPIC -O2" \
     --extra-ldflags="-L$PREFIX/lib -static-libstdc++" \
-    --extra-libs="-lm -ldl -llog -landroid -lmediandk -lz -lbz2 -llzma" \
+    --extra-libs="-lm -ldl -llog -landroid -lmediandk -lz -lbz2 -llzma -lc++_static -lc++abi" \
     --disable-doc --disable-debug --disable-stripping \
     ${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"} >"$LOGDIR/ffmpeg-configure.log" 2>&1; then
     FF_OK=0
@@ -764,7 +766,7 @@ fi
         [ -n "$f" ] || continue
         line=$(grep -hE 'configure: error|^CMake Error|ERROR: |: error: |fatal error:|No such file or directory|Could NOT find' \
                   "$LOGDIR/$f.log" "$LOGDIR/$f-configure.log" "$LOGDIR/$f-make.log" 2>/dev/null \
-                | grep -vE 'Looking for|Performing Test|Fetching value|Check for working' | head -1 | cut -c1-220)
+                | head -3 | tr '\n' ' | ' | cut -c1-260)
         if [ -z "$line" ]; then
             line=$(tail -3 "$LOGDIR/$f.log" 2>/dev/null | tr '\n' ' | ' | cut -c1-220)
             echo "  - $f :: (无标准错误行) $line"

@@ -483,9 +483,11 @@ b_openmpt() {
     fetch openmpt "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.19+release.autotools.tar.gz https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.19%2Brelease.autotools.tar.gz" openmpt
     do_autotools openmpt --disable-libopenmpt-soundtouch
     rm -f $PREFIX/lib/libopenmpt.so*
-    # libopenmpt 内嵌的 modplug 用 libvorbisfile 解 OGG（ov_open_callbacks/ov_streams），
-    # .pc 里不带 -lvorbisfile 就会 undefined symbol → ffmpeg 报 "libopenmpt not found"
-    write_pc libopenmpt 0.7.19 "-lopenmpt -lvorbisfile -lvorbis -logg -lm -lc++_static -lc++abi"
+    # 不要用 write_pc 覆盖 libopenmpt 自带的 .pc：它的 Requires.private 里带着
+    # modplug 真正依赖的 ogg/vorbisfile/mpg123。手写那份补了 vorbisfile 又缺 mpg123，
+    # 永远差一块，ffmpeg 只会说 "libopenmpt not found"。
+    [ -f $PREFIX/lib/pkgconfig/libopenmpt.pc ] \
+        && echo "libopenmpt.pc: $(sed -n 's/^Requires.private: //p;/^Libs.private/p;/^Version/p' $PREFIX/lib/pkgconfig/libopenmpt.pc | tr '\n' ' ')"
 }
 b_soxr()   { fetch soxr https://sourceforge.net/projects/soxr/files/soxr-0.1.3-Source.tar.xz soxr; do_cmake soxr -DWITH_LSP_DEMO=OFF -DBUILD_TESTS=OFF -DWITH_OPENMP=OFF -DHAVE_AVX_P6=OFF -DHAVE_AVX=OFF -DHAVE_SSE2=OFF -DHAVE_SSE3=OFF; }
 b_bs2b()   {
@@ -717,15 +719,30 @@ echo "仍含 C++ 运行时的 pc: $(grep -l -e 'lstdc++' -e 'lc\+\+[^_]' $PREFIX
 # "ERROR: vulkan requested but not found"，把整个 configure 卡死。
 # ============================================================================
 echo ""
+echo ""
+echo "=== 安装新 Vulkan-Headers（FFmpeg 9 读头里的 VK_HEADER_VERSION，要求 >= 251）==="
+# 逐库探测里 vkCreateInstance 是能链接通过的，卡点在头文件版本宏：
+# NDK sysroot 自带的 vulkan_core.h 偏旧，所以从 Khronos 装一份新的优先使用。
+fetch vulkan_hdr "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.3.278.tar.gz https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.3.275.tar.gz" vulkan_hdr
+if [ -d "$SRC/vulkan_hdr/include/vulkan" ]; then
+    mkdir -p $PREFIX/include
+    rm -rf $PREFIX/include/vulkan
+    cp -rf "$SRC/vulkan_hdr/include/vulkan" $PREFIX/include/
+    echo "已装头文件，VK_HEADER_VERSION=$(sed -n 's/^#  *define  *VK_HEADER_VERSION  *\([0-9]*\).*/\1/p' $PREFIX/include/vulkan/vulkan_core.h | head -1)"
+else
+    echo "未取得新头，退回 NDK sysroot 的头（vulkan 可能仍被判定不可用）"
+fi
 echo "=== 生成 vulkan.pc ==="
+VK_INC=$SYSROOT/usr/include
+[ -f "$PREFIX/include/vulkan/vulkan_core.h" ] && VK_INC=$PREFIX/include
 VK_HDR=$(sed -n 's/^#  *define  *VK_HEADER_VERSION  *\([0-9][0-9]*\).*/\1/p' \
-            "$SYSROOT/usr/include/vulkan/vulkan_core.h" 2>/dev/null | head -1)
+            "$VK_INC/vulkan/vulkan_core.h" 2>/dev/null | head -1)
 VK_HDR=${VK_HDR:-275}
 [ "$VK_HDR" -ge 251 ] || VK_HDR=251
 {
     echo "prefix=$PREFIX"
     echo "libdir=\${prefix}/lib"
-    echo "includedir=$SYSROOT/usr/include"
+    echo "includedir=$VK_INC"
     echo "Name: Vulkan-Loader"
     echo "Description: Vulkan Loader"
     echo "Version: 1.3.$VK_HDR"

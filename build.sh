@@ -179,9 +179,9 @@ pkgconfig = '$PKGCFG'
 python = '$(command -v python3)'
 
 [built-in options]
-c_args = ['--target=$TARGET$API', '--sysroot=$SYSROOT', '-fPIC', '-O2', '-I$PREFIX/include']
+c_args = ['--target=$TARGET$API', '--sysroot=$SYSROOT', '-fPIC', '-O2', '-I$PREFIX/include', '-I$PREFIX/include/freetype2']
 c_link_args = ['-L$PREFIX/lib']
-cpp_args = ['--target=$TARGET$API', '--sysroot=$SYSROOT', '-fPIC', '-O2', '-I$PREFIX/include']
+cpp_args = ['--target=$TARGET$API', '--sysroot=$SYSROOT', '-fPIC', '-O2', '-I$PREFIX/include', '-I$PREFIX/include/freetype2']
 cpp_link_args = ['-L$PREFIX/lib', '-static-libstdc++']
 
 [host_machine]
@@ -280,7 +280,10 @@ b_openssl() {
         "-D__ANDROID_API__=$API" "-fPIC"
     make build_libs -j$(nproc)
     make install_sw install_ssldirs -j$(nproc) >/dev/null
-    cp -f libcrypto.a libssl.a $PREFIX/lib/
+    for a in libcrypto.a libssl.a; do
+        [ -f "$PREFIX/lib/$a" ] || cp -f "$a" "$PREFIX/lib/$a" 2>/dev/null || true
+    done
+    have libcrypto.a || { echo "openssl 没产出 libcrypto.a"; ls *.a 2>/dev/null | head; return 1; }
     write_pc openssl 3.3.2 "-lssl -lcrypto"
     write_pc libcrypto 3.3.2 "-lcrypto -lz -ldl -lpthread"
 }
@@ -340,7 +343,18 @@ b_x265() {
         -DENABLE_SHARED=OFF -DENABLE_STATIC=ON -DENABLE_CLI=OFF \
         -DENABLE_ASSEMBLY=ON -DENABLE_NEON=ON \
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON ..
-    cmake --build . -j"$(nproc)"; cmake --install .
+    if ! cmake --build . -j"$(nproc)" >"$LOGDIR/x265-asm.log" 2>&1; then
+        echo "x265 开启 NEON 汇编失败，退回 ENABLE_ASSEMBLY=OFF 重编"
+        tail -5 "$LOGDIR/x265-asm.log"
+        rm -rf "$d/build"; mkdir -p "$d/build"; cd "$d/build"
+        cmake -DCMAKE_TOOLCHAIN_FILE="$NDK_ROOT/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-$API -DANDROID_STL=c++_static \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PREFIX \
+            -DENABLE_SHARED=OFF -DENABLE_STATIC=ON -DENABLE_CLI=OFF \
+            -DENABLE_ASSEMBLY=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON ..
+        cmake --build . -j"$(nproc)"
+    fi
+    cmake --install .
     write_pc x265 4.0 "-lx265"
 }
 b_dav1d() {
@@ -372,8 +386,7 @@ b_rav1e() {
 [target.aarch64-linux-android]
 ar = "$AR"
 linker = "$CC"
-rustflags = ["-C", "link-arg=--sysroot=$SYSROOT", "-C", "link-arg=-static-libstdc++",
-             "-C", "link-arg=-L$PREFIX/lib"]
+rustflags = ["-C", "link-arg=--sysroot=$SYSROOT", "-C", "link-arg=-static-libstdc++"]
 EOF
     cargo rustc --release --target aarch64-linux-android --lib -- --crate-type=staticlib
     [ -f target/aarch64-linux-android/release/librav1e.a ] || { echo "rav1e 没产出 staticlib"; ls target/aarch64-linux-android/release/ | head -20; return 1; }
@@ -413,13 +426,12 @@ b_theora() {
     for f in /usr/share/automake-*/config.sub /usr/share/automake-*/config.guess; do
         [ -f "$f" ] && cp -f "$f" .
     done
-    autoreconf -fiv
     do_autotools theora --disable-examples --disable-spec
 }
 b_lame()   { fetch lame https://sourceforge.net/projects/lame/files/lame/3.100/lame-3.100.tar.gz lame; do_autotools lame --disable-frontend; }
 b_amrnb()  { fetch amr https://sourceforge.net/projects/opencore-amr/files/opencore-amr/opencore-amr-0.1.6.tar.gz opencore-amr; do_autotools opencore-amr; }
 b_amrwb()  { fetch voamr https://sourceforge.net/projects/opencore-amr/files/vo-amrwbenc/vo-amrwbenc-0.1.3.tar.gz vo-amrwbenc; do_autotools vo-amrwbenc; }
-b_gme()    { gitclone gme https://bitbucket.org/mpyne/game-music-emu.git gme; do_cmake gme; }
+b_gme()    { gitclone gme https://bitbucket.org/mpyne/game-music-emu.git gme 0.6.4; do_cmake gme; }
 b_mpg123() { fetch mpg123 https://www.mpg123.de/download/mpg123-1.32.10.tar.bz2 mpg123; do_autotools mpg123 --disable-modules --disable-network --with-realtime=none; }
 b_openmpt() {
     fetch openmpt "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.19+release.makefile.tar.gz" openmpt
@@ -441,8 +453,8 @@ b_rubberband() {
 # 第 5 层：滤镜 / 图像 / 质量测量
 # ============================================================================
 b_zimg()    { fetch zimg https://github.com/sekrit-twc/zimg/archive/refs/tags/release-3.0.5.tar.gz zimg; do_autotools zimg --disable-tests; }
-b_vidstab() { fetch vidstab https://github.com/openkylin/libvidstab/archive/refs/tags/upstream/1.1.0.tar.gz vidstab; do_cmake vidstab -DUSE_SSE2=OFF; }
-b_mysofa()  { fetch mysofa https://github.com/hoene/libmysofa/archive/refs/tags/v1.3.2.tar.gz mysofa; do_cmake mysofa -DJSON_TESTS=OFF -DCMOD_TESTS=OFF -DBUILD_TESTING=OFF -DCMAKE_DISABLE_FIND_PACKAGE_CUnit=ON; }
+b_vidstab() { fetch vidstab https://github.com/openkylin/libvidstab/archive/refs/tags/upstream/1.1.0.tar.gz vidstab; do_cmake vidstab -DUSE_SSE2=OFF -DUSE_SSE=OFF; }
+b_mysofa()  { fetch mysofa https://github.com/hoene/libmysofa/archive/refs/tags/v1.3.2.tar.gz mysofa; do_cmake mysofa -DJSON_TESTS=OFF -DCMOD_TESTS=OFF -DBUILD_TESTING=OFF -DCMAKE_DISABLE_FIND_PACKAGE_CUnit=ON -DBUILD_TESTS=OFF -DENABLE_TESTS=OFF; }
 b_lcms2()   { fetch lcms2 https://github.com/mm2/Little-CMS/archive/refs/tags/lcms2.14.tar.gz lcms2; do_autotools lcms2; }
 b_webp()    {
     fetch webp https://github.com/webmproject/libwebp/archive/refs/tags/v1.4.0.tar.gz webp
@@ -454,6 +466,9 @@ b_brotli()  { fetch brotli https://github.com/google/brotli/archive/refs/tags/v1
 b_highway() { fetch highway https://github.com/google/highway/archive/refs/tags/1.2.0.tar.gz highway; do_cmake highway -DHWY_ENABLE_CONTRIB=OFF -DBUILD_TESTING=OFF; }
 b_jxl()     {
     gitclone jxl https://github.com/libjxl/libjxl.git jxl v0.11.1
+    cd "$SRC/jxl"
+    git submodule update --init --depth 1 --recursive || true
+    [ -f third_party/sjpeg/CMakeLists.txt ] || { echo "jxl 子模块未拉全"; ls third_party | head; return 1; }
     do_cmake jxl -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF \
         -DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF \
         -DJPEGXL_ENABLE_PLUGINS=OFF -DJPEGXL_ENABLE_SKCMS=OFF \
@@ -476,7 +491,20 @@ b_glslang() {
     fetch glslang https://github.com/KhronosGroup/glslang/archive/refs/tags/15.1.0.tar.gz glslang
     do_cmake glslang -DENABLE_OPT=OFF -DGLSLANG_TESTS=OFF -DENABLE_HLSL=OFF -DBUILD_TESTING=OFF
 }
+b_glslang_pc() {
+    cat > $PREFIX/lib/pkgconfig/glslang.pc <<EOF
+prefix=$PREFIX
+libdir=\${prefix}/lib
+includedir=\${prefix}/include
+Name: glslang
+Description: glslang
+Version: 15.1.0
+Libs: -L\${libdir} -lSPIRV -lglslang -lMachineIndependent -lGenericCodeGen -lOSDependent -lSPVRemapper -lstdc++
+Cflags: -I\${includedir}
+EOF
+}
 b_placebo() {
+    b_glslang_pc
     fetch placebo https://code.videolan.org/videolan/libplacebo/-/archive/v6.338.0/libplacebo-v6.338.0.tar.bz2 placebo
     cd "$SRC/placebo"
     git submodule update --init --depth 1 src/vulkan src/gl 2>/dev/null || true
@@ -578,7 +606,6 @@ run_step zmq        b_zmq
 run_step bluray     b_bluray libbluray.a
 run_step dvdread    b_dvdread
 run_step dvdnav     b_dvdnav
-run_step xcb        b_xcb
 run_step v4l2       b_v4l2
 
 # ============================================================================
@@ -598,7 +625,6 @@ flag librav1e.a             --enable-librav1e
 flag libvpx.a               --enable-libvpx
 flag libxvidcore.a          --enable-libxvidcore
 flag libopus.a              --enable-libopus
-flag libogg.a               --enable-libogg
 flag libvorbis.a            --enable-libvorbis
 flag libtheora.a            --enable-libtheora
 flag libmp3lame.a           --enable-libmp3lame
@@ -618,7 +644,6 @@ flag libwebp.a              --enable-libwebp
 flag libjxl.a               --enable-libjxl
 flag libxml2.a              --enable-libxml2
 flag libzmq.a               --enable-libzmq
-flag libzmq.so              --enable-libzmq
 flag libsrt.a               --enable-libsrt
 flag libssh.a               --enable-libssh
 flag libcrypto.a            --enable-openssl
@@ -630,7 +655,6 @@ flag libfreetype.a          --enable-libfreetype
 flag libfribidi.a           --enable-libfribidi
 flag libharfbuzz.a          --enable-libharfbuzz
 flag libfontconfig.a        --enable-libfontconfig
-flag libxcb.a               --enable-libxcb
 flag libplacebo.a           --enable-libplacebo
 if ls "$PREFIX"/lib/libplacebo*.a >/dev/null 2>&1; then
     grep -q -- '--enable-libplacebo' <<<" ${ENABLE_FLAGS[*]:-} " || ENABLE_FLAGS+=(--enable-libplacebo)
@@ -713,6 +737,14 @@ fi
     strings -n 40 "$PREFIX/lib/libffmpeg.so" | grep -m1 'configuration:' || true
     echo "ffmpeg 构建状态: FF_OK=$FF_OK  产物: $([ -x "$BIN" ] && echo 有 || echo 无)"
     echo
+    echo "pkgconfig 清单:"
+    ls $PREFIX/lib/pkgconfig 2>/dev/null | tr '\n' ' '
+    echo
+    echo "pkg-config 解析检查:"
+    for p in freetype2 harfbuzz glslang dav1d; do
+        printf '  %-10s -> %s\n' "$p" "$(pkg-config --cflags $p 2>&1 | head -1)"
+    done
+    echo
     echo "实际安装到 $PREFIX/lib 的静态库:"
     ls $PREFIX/lib/*.a 2>/dev/null | xargs -n1 basename | tr '\n' ' '
     echo
@@ -723,7 +755,12 @@ fi
         line=$(grep -hE 'configure: error|^CMake Error|ERROR: |: error: |fatal error:|No such file or directory' \
                   "$LOGDIR/$f.log" "$LOGDIR/$f-configure.log" "$LOGDIR/$f-make.log" 2>/dev/null \
                 | grep -vE 'Looking for|Performing Test|Fetching value|Check for working' | head -1 | cut -c1-220)
-        echo "  - $f :: ${line:-（日志里没匹配到错误行，见完整日志）}"
+        if [ -z "$line" ]; then
+            line=$(tail -3 "$LOGDIR/$f.log" 2>/dev/null | tr '\n' ' | ' | cut -c1-220)
+            echo "  - $f :: (无标准错误行) $line"
+        else
+            echo "  - $f :: $line"
+        fi
     done
     echo
     if [ $FF_OK -eq 0 ] && [ -s "$LOGDIR/ffmpeg-configure.log" ]; then

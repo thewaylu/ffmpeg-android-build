@@ -825,6 +825,7 @@ rm -f "\$PREFIX/bin/ffmpeg" "\$PREFIX/bin/ffprobe" "\$BUILD_ROOT/ffmpeg-unstripp
 
 FF_OK=1
 TRY=0
+VK_STATE=启用
 ffmpeg_configure() {   # 用全局 VK_ON 决定是否带 --enable-vulkan
     local vk=""; [ "$VK_ON" = 1 ] && vk=--enable-vulkan
     ./configure \

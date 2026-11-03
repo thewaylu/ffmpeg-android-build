@@ -481,7 +481,10 @@ b_openmpt() {
     fetch openmpt "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.19+release.makefile.tar.gz" openmpt
     make -C "$SRC/openmpt" -j"$(nproc)" PREFIX=$PREFIX NO_REVISION=1
     make -C "$SRC/openmpt" install PREFIX=$PREFIX NO_REVISION=1
-    write_pc libopenmpt 0.7.19 "-lopenmpt -lm -lstdc++"
+    # openmpt 的 make install 会同时装 .so 与 .a，而 -lopenmpt 优先选中 .so，
+    # 单体里就留下 NEEDED libopenmpt.so.N —— 删掉副本，只保留静态库
+    rm -f $PREFIX/lib/libopenmpt.so*
+    write_pc libopenmpt 0.7.19 "-lopenmpt -lm -lc++_static -lc++abi"
 }
 b_soxr()   { fetch soxr https://sourceforge.net/projects/soxr/files/soxr-0.1.3-Source.tar.xz soxr; do_cmake soxr -DWITH_LSP_DEMO=OFF -DBUILD_TESTS=OFF -DWITH_OPENMP=OFF -DHAVE_AVX_P6=OFF -DHAVE_AVX=OFF -DHAVE_SSE2=OFF -DHAVE_SSE3=OFF; }
 b_bs2b()   {
@@ -492,7 +495,16 @@ b_bs2b()   {
         cp -f "$f" "$SRC/bs2b/build-aux/" 2>/dev/null || true
         cp -f "$f" "$SRC/bs2b/" 2>/dev/null || true
     done
-    do_autotools bs2b
+    # 它的 autotools 太旧（config.sub 不认 android），而全部实现就 3 个 .c，直接手工编静态库
+    local d=$(find "$SRC/bs2b" -type d -name libbs2b 2>/dev/null | head -1)
+    [ -n "$d" ] || { echo "找不到 bs2b 源目录"; find "$SRC/bs2b" -maxdepth 3 -type d; return 1; }
+    cd "$d" || return 1
+    echo "bs2b 源目录: $d"; ls
+    $CC -O2 -fPIC -I. -c bs2b.c bml37.c cbs2b.c
+    install -d $PREFIX/lib $PREFIX/include
+    rm -f $PREFIX/lib/libbs2b.a
+    $AR rcus $PREFIX/lib/libbs2b.a bs2b.o bml37.o cbs2b.o
+    cp -f bs2b.h bml37.h cbs2b.h $PREFIX/include/
     write_pc libbs2b 3.1.0 "-lbs2b"
 }
 # 不带 --enable-single：那样只产出 libfftw3f，rubberband 的 meson 需要 fftw3（双精度）依赖
@@ -595,7 +607,7 @@ b_srt() {
     fi
 }
 b_libssh() { fetch libssh https://git.libssh.org/projects/libssh.git/snapshot/libssh-0.11.1.tar.gz libssh; do_cmake libssh -DBUILD_SHARED_LIBS=OFF -DWITH_STATIC_LIB=ON -DWITH_EXAMPLES=OFF -DWITH_GSSAPI=OFF -DWITH_SERVER=OFF -DUNIT_TESTING=OFF -DWITH_ZLIB=OFF -DOPENSSL_INCLUDE_DIR=$PREFIX/include -DOPENSSL_CRYPTO_LIBRARY=$PREFIX/lib/libcrypto.a -DOPENSSL_SSL_LIBRARY=$PREFIX/lib/libssl.a; }
-b_zmq()    { fetch zmq https://github.com/zeromq/libzmq/releases/download/v4.3.5/zeromq-4.3.5.tar.gz zmq; do_cmake zmq -DZMQ_BUILD_TESTS=OFF -DWITH_LIBSODIUM=OFF -DWITH_TLS=OFF; }
+b_zmq()    { fetch zmq https://github.com/zeromq/libzmq/releases/download/v4.3.5/zeromq-4.3.5.tar.gz zmq; do_cmake zmq -DZMQ_BUILD_TESTS=OFF -DWITH_LIBSODIUM=OFF -DWITH_TLS=OFF -DBUILD_SHARED=OFF -DBUILD_STATIC=ON; }
 b_bluray() {
     fetch bluray https://download.videolan.org/pub/videolan/libbluray/1.3.4/libbluray-1.3.4.tar.bz2 bluray
     # libbluray 的 dec_init 漏了 static，是全局符号；单体静态合并时和 FFmpeg 9 的
@@ -689,6 +701,12 @@ echo ""
 echo "=== 清理 .pc 中的 -lpthread ==="
 sed -i 's/[[:space:]]-lpthread//g' $PREFIX/lib/pkgconfig/*.pc 2>/dev/null || true
 echo "仍含 lpthread 的 pc: $(grep -l 'lpthread' $PREFIX/lib/pkgconfig/*.pc 2>/dev/null | tr '\n' ' ')"
+
+# 同理把 .pc 里的 C++ 运行时换成 NDK 静态 libc++：-lc++ 会解析到 sysroot 的
+# libc++_shared.so 桩，单体里就留下 NEEDED libc++_shared.so（又变成一个外部依赖）
+sed -i -e 's/-lstdc++/-lc++_static -lc++abi/g' \
+       -e 's/-lc++\([[:space:]]\|$\)/-lc++_static -lc++abi\1/g' $PREFIX/lib/pkgconfig/*.pc 2>/dev/null || true
+echo "仍含 C++ 运行时的 pc: $(grep -l -e 'lstdc++' -e 'lc\+\+[^_]' $PREFIX/lib/pkgconfig/*.pc 2>/dev/null | tr '\n' ' ')"
 
 # ============================================================================
 # 补一个 vulkan.pc
@@ -827,7 +845,17 @@ if [ -x "$BIN" ]; then
     "$STRIP" --strip-unneeded "$BIN"
     cp -f "$BIN" "$PREFIX/lib/libffmpeg.so"
     chmod 755 "$PREFIX/lib/libffmpeg.so"
-    echo "=== 单文件已产出 ==="
+    # 只允许 Android 系统自带的库；出现别的就说明不是一个文件能独立跑
+    SYS_LIBS='libm\.so|libdl\.so|libc\.so|liblog\.so|libandroid\.so|libmediandk\.so|libcamera2ndk\.so|libvulkan\.so|libEGL\.so|libGLESv2\.so|libGLESv1_CM\.so|libOpenCL\.so'
+    STRAY=$("$READELF" -d "$PREFIX/lib/libffmpeg.so" 2>/dev/null \
+            | sed -n 's/.*NEEDED.*\[\(.*\)\]/\1/p' \
+            | grep -Ev "^($SYS_LIBS)$" | tr '\n' ' ')
+    if [ -n "$STRAY" ]; then
+        echo "=== 产物仍依赖非系统库，不算单体: $STRAY ==="
+        rm -f "$PREFIX/lib/libffmpeg.so"
+    else
+        echo "=== 单文件已产出（依赖全部为系统库）==="
+    fi
 else
     echo "=== 未产出 ffmpeg 可执行文件（FF_OK=$FF_OK）==="
 fi
@@ -886,7 +914,7 @@ fi
             echo "  - $f :: $line"
         fi
         # 只给第一条错误行经常看不出真正的 fatal 在哪（前面全是可选依赖的 warning）
-        echo "      尾部: $(tail -6 "$LOGDIR/$f.log" 2>/dev/null | tr '\n' ' | ' | cut -c1-400)"
+        echo "      尾部: $(tail -20 "$LOGDIR/$f.log" 2>/dev/null | tr '\n' ' | ' | cut -c1-1400)"
     done
     echo
     if [ -f "$SRC/ffmpeg/ffbuild/config.log" ]; then

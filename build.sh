@@ -447,8 +447,8 @@ b_xvid() {
     # 它的对外头在 src/xvid.h，build/generic 的 make install 并不会装它，
     # 而 ffmpeg 的 libxvid 探测要同时看到 xvid.h + xvid_global，缺一个就整体 configure 失败。
     install -d $PREFIX/lib $PREFIX/include
-    local xal=$(ls xvidcore.a libxvidcore.a 2>/dev/null | head -1)
-    [ -n "$xal" ] || { echo "找不到 xvid 静态库产物"; ls -l *.a */*.a 2>/dev/null; return 1; }
+    local xal=$(find "$SRC/xvid" \( -name 'libxvidcore.a' -o -name 'xvidcore.a' \) 2>/dev/null | head -1)
+    [ -n "$xal" ] || { echo "找不到 xvid 静态库产物"; find "$SRC/xvid" -name '*.a' 2>/dev/null; return 1; }
     cp -f "$xal" $PREFIX/lib/libxvidcore.a
     local xh=$(find "$SRC/xvid" -maxdepth 3 -name xvid.h 2>/dev/null | head -1)
     [ -n "$xh" ] || { echo "找不到 xvid.h"; find "$SRC/xvid" -maxdepth 2 -type d; return 1; }
@@ -484,13 +484,27 @@ b_openmpt() {
     write_pc libopenmpt 0.7.19 "-lopenmpt -lm -lstdc++"
 }
 b_soxr()   { fetch soxr https://sourceforge.net/projects/soxr/files/soxr-0.1.3-Source.tar.xz soxr; do_cmake soxr -DWITH_LSP_DEMO=OFF -DBUILD_TESTS=OFF -DWITH_OPENMP=OFF -DHAVE_AVX_P6=OFF -DHAVE_AVX=OFF -DHAVE_SSE2=OFF -DHAVE_SSE3=OFF; }
-b_bs2b()   { fetch bs2b https://sourceforge.net/projects/bs2b/files/libbs2b/3.1.0/libbs2b-3.1.0.tar.gz bs2b; do_autotools bs2b; write_pc libbs2b 3.1.0 "-lbs2b"; }
-b_fftw()   { fetch fftw https://fftw.org/fftw-3.3.10.tar.gz fftw; do_autotools fftw --enable-single --disable-float128 --without-python; }
+b_bs2b()   {
+    fetch bs2b https://sourceforge.net/projects/bs2b/files/libbs2b/3.1.0/libbs2b-3.1.0.tar.gz bs2b
+    # 3.1.0 自带的 config.sub 太旧：configure 报 "machine `aarch64-linux' not recognized"
+    for f in /usr/share/automake-*/config.sub /usr/share/automake-*/config.guess; do
+        [ -f "$f" ] || continue
+        cp -f "$f" "$SRC/bs2b/build-aux/" 2>/dev/null || true
+        cp -f "$f" "$SRC/bs2b/" 2>/dev/null || true
+    done
+    do_autotools bs2b
+    write_pc libbs2b 3.1.0 "-lbs2b"
+}
+# 不带 --enable-single：那样只产出 libfftw3f，rubberband 的 meson 需要 fftw3（双精度）依赖
+b_fftw()   { fetch fftw https://fftw.org/fftw-3.3.10.tar.gz fftw; do_autotools fftw --disable-float128 --without-python; }
 b_samplerate() { fetch samplerate https://github.com/libsndfile/libsamplerate/releases/download/0.2.2/libsamplerate-0.2.2.tar.xz samplerate; do_cmake samplerate -DBUILD_TESTING=OFF -DLIBSAMPLERATE_EXAMPLES=OFF; }
 b_rubberband() {
     fetch rubberband https://breakfastquay.com/files/releases/rubberband-4.0.0.tar.bz2 rubberband
-    do_autotools rubberband --disable-rubberband-cli --disable-simd
+    # rubberband 3.x 起改成 meson 工程，没有 configure.ac（autoreconf 直接报错）
+    # auto-features=disabled 一次性关掉 demo/tests/jni 等非必需 feature
+    do_meson rubberband -Dauto-features=disabled
     write_pc rubberband-2.0 4.0.0 "-lrubberband -lsamplerate -lfftw3"
+    write_pc rubberband 4.0.0 "-lrubberband -lsamplerate -lfftw3"
 }
 
 # ============================================================================
@@ -582,7 +596,16 @@ b_srt() {
 }
 b_libssh() { fetch libssh https://git.libssh.org/projects/libssh.git/snapshot/libssh-0.11.1.tar.gz libssh; do_cmake libssh -DBUILD_SHARED_LIBS=OFF -DWITH_STATIC_LIB=ON -DWITH_EXAMPLES=OFF -DWITH_GSSAPI=OFF -DWITH_SERVER=OFF -DUNIT_TESTING=OFF -DWITH_ZLIB=OFF -DOPENSSL_INCLUDE_DIR=$PREFIX/include -DOPENSSL_CRYPTO_LIBRARY=$PREFIX/lib/libcrypto.a -DOPENSSL_SSL_LIBRARY=$PREFIX/lib/libssl.a; }
 b_zmq()    { fetch zmq https://github.com/zeromq/libzmq/releases/download/v4.3.5/zeromq-4.3.5.tar.gz zmq; do_cmake zmq -DZMQ_BUILD_TESTS=OFF -DWITH_LIBSODIUM=OFF -DWITH_TLS=OFF; }
-b_bluray() { fetch bluray https://download.videolan.org/pub/videolan/libbluray/1.3.4/libbluray-1.3.4.tar.bz2 bluray; do_autotools bluray --disable-bdjava-jar --disable-examples; }
+b_bluray() {
+    fetch bluray https://download.videolan.org/pub/videolan/libbluray/1.3.4/libbluray-1.3.4.tar.bz2 bluray
+    # libbluray 的 dec_init 漏了 static，是全局符号；单体静态合并时和 FFmpeg 9 的
+    # fftools/ffmpeg_dec.c:dec_init 直接 duplicate symbol，LDXX 阶段整个链接失败。
+    # 改名加 bluray_ 前缀（比 objcopy --localize 安全：局部化会让跨文件的调用变 undefined）。
+    find "$SRC/bluray/src" \( -name '*.c' -o -name '*.h' \) -print0 2>/dev/null \
+        | xargs -0 -r sed -i 's/\bdec_init\b/bluray_dec_init/g'
+    grep -rc 'bluray_dec_init' "$SRC/bluray/src" 2>/dev/null | grep -v ':0' | head -5
+    do_autotools bluray --disable-bdjava-jar --disable-examples
+}
 b_dvdread() { fetch dvdread https://download.videolan.org/pub/videolan/libdvdread/6.1.2/libdvdread-6.1.2.tar.bz2 dvdread; do_autotools dvdread --with-libcss=no; }
 b_dvdnav()  { fetch dvdnav https://download.videolan.org/pub/videolan/libdvdnav/6.1.1/libdvdnav-6.1.1.tar.bz2 dvdnav; do_autotools dvdnav --with-libcss=no; }
 
@@ -647,7 +670,9 @@ run_step jxl        b_jxl libjxl.a
 run_step glslang    b_glslang
 run_step xml2       b_xml2
 run_step srt        b_srt libsrt.a
-run_step libssh     b_libssh libssh.a
+# libssh 主动排除：只服务 sftp:// 协议，Android 端本地转码用不到；
+# 它的 CMake install 规则找 build/src/libssh.a 而交叉构建产物名不符，四轮未解，继续拖只增加噪音。
+SKIPPED+=("libssh(主动排除:sftp协议无用/CMake静态install不兼容)")
 run_step zmq        b_zmq
 run_step bluray     b_bluray libbluray.a
 run_step dvdread    b_dvdread

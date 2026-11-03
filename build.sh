@@ -58,7 +58,7 @@ want() {  # SKIP_LIBS 里点名过的库直接跳过
 run_step() {
     # 注意：bash 的 local 会先展开整行再赋值，所以 log 必须单独一行，
     # 否则 $name 在此时还是未定义（set -u 下直接 unbound variable）
-    local name=$1 fn=$2 expect=$3
+    local name=$1 fn=$2 expect=${3:-}
     local log=$LOGDIR/$name.log
     echo ""
     if ! want "$name"; then

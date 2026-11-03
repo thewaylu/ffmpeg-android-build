@@ -483,7 +483,9 @@ b_openmpt() {
     fetch openmpt "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.19+release.autotools.tar.gz https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.19%2Brelease.autotools.tar.gz" openmpt
     do_autotools openmpt --disable-libopenmpt-soundtouch
     rm -f $PREFIX/lib/libopenmpt.so*
-    write_pc libopenmpt 0.7.19 "-lopenmpt -lm -lc++_static -lc++abi"
+    # libopenmpt 内嵌的 modplug 用 libvorbisfile 解 OGG（ov_open_callbacks/ov_streams），
+    # .pc 里不带 -lvorbisfile 就会 undefined symbol → ffmpeg 报 "libopenmpt not found"
+    write_pc libopenmpt 0.7.19 "-lopenmpt -lvorbisfile -lvorbis -logg -lm -lc++_static -lc++abi"
 }
 b_soxr()   { fetch soxr https://sourceforge.net/projects/soxr/files/soxr-0.1.3-Source.tar.xz soxr; do_cmake soxr -DWITH_LSP_DEMO=OFF -DBUILD_TESTS=OFF -DWITH_OPENMP=OFF -DHAVE_AVX_P6=OFF -DHAVE_AVX=OFF -DHAVE_SSE2=OFF -DHAVE_SSE3=OFF; }
 b_bs2b()   {
@@ -835,7 +837,15 @@ while :; do
     cp -f "$LOGDIR/ffmpeg-configure.log" "$LOGDIR/ffmpeg-configure-attempt$TRY.log"
     errline=$(grep -m1 '^ERROR: ' "$LOGDIR/ffmpeg-configure.log" | cut -c1-160)
     echo "!!! configure 第 $TRY 次失败: ${errline:-（没有 ERROR 行，见日志）}"
-    if [ "$VK_ON" = 1 ]; then VK_ON=0; VK_STATE=降级关闭; continue; fi
+    case "${errline:-}" in
+        *vulkan*)
+            if [ "$VK_ON" = 1 ]; then
+                VK_ON=0; VK_STATE=降级关闭
+                echo "  错误确实指向 vulkan，摘掉 --enable-vulkan 重试"
+                continue
+            fi
+            echo "vulkan 已摘除仍失败，停止重试"; FF_OK=0; break ;;
+    esac
     pkg=$(printf '%s' "${errline#ERROR: }" | sed -n 's/^\([a-zA-Z0-9_.+-]\{2,\}\).*/\1/p')
     if [ -z "$pkg" ]; then echo "无法提取库名，停止重试"; FF_OK=0; break; fi
     case "$pkg" in lib*) flag="--enable-$pkg";; *) flag="--enable-lib$pkg";; esac

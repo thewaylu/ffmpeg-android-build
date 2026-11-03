@@ -88,10 +88,21 @@ fetch() {
     fi
     local tmp=$SRC/$dir.dl
     echo "[$name] 下载 $url"
-    curl -fL --retry 3 --connect-timeout 30 -o "$tmp" "$url"
-    rm -rf "$SRC/$dir" "$tmp"; mkdir -p "$SRC/$dir"
-    tar xf "$tmp" -C "$SRC/$dir" --strip-components=1
     rm -f "$tmp"
+    curl -fL --retry 3 --retry-delay 5 --connect-timeout 30 -o "$tmp" "$url" || {
+        echo "[$name] 下载失败：$url"; rm -f "$tmp"; return 1; }
+    [ -s "$tmp" ] || { echo "[$name] 下载到的文件是空的"; rm -f "$tmp"; return 1; }
+    # 确认不是 HTML 错误页（gzip/xz/bzip2 的魔数）
+    local magic=$(od -An -tx1 -N2 "$tmp" 2>/dev/null | tr -d ' \n')
+    case "$magic" in
+        1f8b*|425a|fd75|504b*) ;;   # gz / bz2 / xz / zip
+        *) echo "[$name] 下载内容不像压缩包（magic=$magic），可能是错误页"; rm -f "$tmp"; return 1 ;;
+    esac
+    rm -rf "$SRC/$dir"
+    mkdir -p "$SRC/$dir"
+    tar xf "$tmp" -C "$SRC/$dir" --strip-components=1 || { echo "[$name] 解压失败"; return 1; }
+    rm -f "$tmp"
+    [ -n "$(ls -A "$SRC/$dir" 2>/dev/null)" ] || { echo "[$name] 解压后目录为空"; return 1; }
 }
 gitclone() {
     local name=$1 url=$2 dir=$3 ref=${4:-}
@@ -111,7 +122,7 @@ do_autotools() {
     if [ ! -f configure ]; then
         if [ -f autogen.sh ]; then ./autogen.sh; else autoreconf -fiv; fi
     fi
-    ./configure --prefix="$PREFIX" --host="$TARGET$API" \
+    ./configure --prefix="$PREFIX" --host="$TARGET" \
         --enable-static --disable-shared --disable-doc "$@"
     make -j"$(nproc)"
     make install
@@ -306,13 +317,13 @@ b_libass() {
 b_x264() {
     gitclone x264 https://code.videolan.org/videolan/x264.git x264
     cd "$SRC/x264"
-    ./configure --prefix=$PREFIX --host=$TARGET$API \
+    ./configure --prefix=$PREFIX --host=$TARGET \
         --cross-prefix=$TOOLCHAIN/bin/${TARGET}${API}- \
         --enable-static --enable-pic --disable-cli --disable-opencl --disable-lavf
     make -j$(nproc); make install
 }
 b_x265() {
-    fetch x265 https://bitbucket.org/multicoreware/x265_git/downloads/x265_4.0.1.tar.gz x265
+    fetch x265 https://bitbucket.org/multicoreware/x265_git/downloads/x265_4.0.tar.gz x265
     local d=$SRC/x265/source
     rm -rf "$d/build"; mkdir -p "$d/build"; cd "$d/build"
     cmake -DCMAKE_TOOLCHAIN_FILE="$NDK_ROOT/build/cmake/android.toolchain.cmake" \
@@ -322,7 +333,7 @@ b_x265() {
         -DENABLE_ASSEMBLY=ON -DENABLE_NEON=ON \
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON ..
     cmake --build . -j"$(nproc)"; cmake --install .
-    write_pc x265 4.0.1 "-lx265"
+    write_pc x265 4.0 "-lx265"
 }
 b_dav1d() {
     fetch dav1d https://code.videolan.org/videolan/dav1d/-/archive/1.5.1/dav1d-1.5.1.tar.bz2 dav1d
@@ -371,7 +382,7 @@ b_vpx() {
 b_xvid() {
     fetch xvid https://downloads.xvid.com/downloads/xvidcore-1.3.7.tar.bz2 xvid
     cd "$SRC/xvid/build/generic"
-    ./configure --prefix=$PREFIX --host=$TARGET$API --build=x86_64-pc-linux-gnu
+    ./configure --prefix=$PREFIX --host=$TARGET --build=x86_64-pc-linux-gnu
     make -j$(nproc)
     install -d $PREFIX/lib && cp -f xvidcore.a $PREFIX/lib/
     write_pc xvidcore 1.3.7 "-lxvidcore"
@@ -388,9 +399,9 @@ b_lame()   { fetch lame https://sourceforge.net/projects/lame/files/lame/3.100/l
 b_amrnb()  { fetch amr https://sourceforge.net/projects/opencore-amr/files/opencore-amr/opencore-amr-0.1.6.tar.gz opencore-amr; do_autotools opencore-amr; }
 b_amrwb()  { fetch voamr https://sourceforge.net/projects/opencore-amr/files/vo-amrwbenc/vo-amrwbenc-0.1.3.tar.gz vo-amrwbenc; do_autotools vo-amrwbenc; }
 b_gme()    { gitclone gme https://bitbucket.org/mpyne/game-music-emu.git gme; do_cmake gme; }
-b_mpg123() { fetch mpg123 https://mpg123.de/mpg123-1.32.9.tar.bz2 mpg123; do_autotools mpg123 --disable-modules --disable-network --with-realtime=none; }
+b_mpg123() { fetch mpg123 https://www.mpg123.de/download/mpg123-1.32.10.tar.bz2 mpg123; do_autotools mpg123 --disable-modules --disable-network --with-realtime=none; }
 b_openmpt() {
-    fetch openmpt "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.13.0%2Bautotools.tar.gz" openmpt
+    fetch openmpt "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.19+release.autotools.tar.gz" openmpt
     do_autotools openmpt --disable-openmpt123 --disable-tests --disable-example \
         --without-sdl --without-liblzo2 --enable-mpg123
 }
@@ -408,7 +419,7 @@ b_rubberband() {
 # 第 5 层：滤镜 / 图像 / 质量测量
 # ============================================================================
 b_zimg()    { fetch zimg https://github.com/sekrit-twc/zimg/archive/refs/tags/release-3.0.5.tar.gz zimg; do_autotools zimg --disable-tests; }
-b_vidstab() { fetch vidstab https://public.hronopik.de/vid.stab/files/libvidstab-1.1.1.tar.gz vidstab; do_cmake vidstab; }
+b_vidstab() { fetch vidstab https://github.com/openkylin/libvidstab/archive/refs/tags/upstream/1.1.0.tar.gz vidstab; do_cmake vidstab; }
 b_mysofa()  { fetch mysofa https://github.com/hoene/libmysofa/archive/refs/tags/v1.3.2.tar.gz mysofa; do_cmake mysofa -DJSON_TESTS=OFF -DCMOD_TESTS=OFF; }
 b_lcms2()   { fetch lcms2 https://github.com/mm2/Little-CMS/archive/refs/tags/lcms2.14.tar.gz lcms2; do_autotools lcms2; }
 b_webp()    {
@@ -470,17 +481,17 @@ b_srt() {
             -DENABLE_TESTS=OFF -DUSE_ENCLIB=mbedtls -DENABLE_MBEDTLS=OFF
     fi
 }
-b_libssh() { fetch libssh https://www.libssh.org/archive/libssh-0.11.1.tar.xz libssh; do_cmake libssh -DWITH_EXAMPLES=OFF -DWITH_GSSAPI=OFF -DWITH_SERVER=OFF -DUNIT_TESTING=OFF -DWITH_ZLIB=ON; }
+b_libssh() { fetch libssh https://git.libssh.org/projects/libssh.git/snapshot/libssh-0.11.1.tar.gz libssh; do_cmake libssh -DWITH_EXAMPLES=OFF -DWITH_GSSAPI=OFF -DWITH_SERVER=OFF -DUNIT_TESTING=OFF -DWITH_ZLIB=ON; }
 b_zmq()    { fetch zmq https://github.com/zeromq/libzmq/releases/download/v4.3.5/zeromq-4.3.5.tar.gz zmq; do_cmake zmq -DZMQ_BUILD_TESTS=OFF -DWITH_LIBSODIUM=OFF -DWITH_TLS=OFF; }
-b_bluray() { fetch bluray https://download.videolan.org/pub/videolan/libbluray/1.3.4/libbluray-1.3.4.tar.xz bluray; do_autotools bluray --disable-bdjava-jar --disable-examples; }
-b_dvdread() { fetch dvdread https://download.videolan.org/pub/videolan/libdvdread/6.1.2/libdvdread-6.1.2.tar.xz dvdread; do_autotools dvdread --with-libcss=no; }
-b_dvdnav()  { fetch dvdnav https://download.videolan.org/pub/videolan/libdvdnav/6.1.1/libdvdnav-6.1.1.tar.xz dvdnav; do_autotools dvdnav --with-libcss=no; }
+b_bluray() { fetch bluray https://download.videolan.org/pub/videolan/libbluray/1.3.4/libbluray-1.3.4.tar.bz2 bluray; do_autotools bluray --disable-bdjava-jar --disable-examples; }
+b_dvdread() { fetch dvdread https://download.videolan.org/pub/videolan/libdvdread/6.1.2/libdvdread-6.1.2.tar.bz2 dvdread; do_autotools dvdread --with-libcss=no; }
+b_dvdnav()  { fetch dvdnav https://download.videolan.org/pub/videolan/libdvdnav/6.1.1/libdvdnav-6.1.1.tar.bz2 dvdnav; do_autotools dvdnav --with-libcss=no; }
 
 # ============================================================================
 # 第 8 层：Android 上无意义的（X11 / V4L2 / OpenCL），试了不行就丢
 # ============================================================================
 b_xcb()  {
-    fetch xcb https://www.x.org/releases/individual/lib/xcb-1.17.1.tar.xz xcb
+    fetch xcb https://www.x.org/releases/individual/lib/libxcb-1.17.0.tar.xz xcb
     do_autotools xcb --disable-static=false
 }
 b_v4l2() {

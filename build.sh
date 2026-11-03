@@ -914,18 +914,25 @@ fi
         [ -f "$af" ] || continue
         echo "  $(basename "$af"): $(grep -m2 '^ERROR: ' "$af" | tr '\n' ' | ' | cut -c1-200)"
     done
-    echo "  最后一轮 pkg-config 静态探测复现（用 ffmpeg 的完整 ldflags）:"
-    cat > /tmp/ffmprobe.c <<'TEOF'
-#include <libopenmpt/libopenmpt.h>
-#include <zmq.h>
-#include <srt/srt.h>
-int main(void){ return (int)(size_t)&openmpt_module_create + (int)(size_t)&zmq_ctx_new + (int)(size_t)&srt_socket; }
-TEOF
-    $CC -I$PREFIX/include /tmp/ffmprobe.c -o /tmp/ffmprobe \
-        -L$PREFIX/lib -static-libstdc++ -Wl,--as-needed \
-        $($PKGCFG --static --libs libopenmpt libzmq srt 2>/dev/null) \
-        -lm -ldl -llog -landroid -lmediandk -lz -lbz2 -llzma -lc++_static -lc++abi 2>&1 | head -12
-    echo "  复现结果: $([ -x /tmp/ffmprobe ] && echo 通过 || echo 失败)"
+    echo "  逐库静态探测（用 ffmpeg 的完整 extra-libs，只打印 error 行）:"
+    FFLIBS="-lm -ldl -llog -landroid -lmediandk -lz -lbz2 -llzma -lc++_static -lc++abi"
+    for probe in "libopenmpt libopenmpt/libopenmpt.h openmpt_module_create" \
+                 "libopenmpt libopenmpt/libopenmpt.h openmpt_module_create2" \
+                 "libzmq zmq.h zmq_ctx_new" "srt srt/srt.h srt_socket" \
+                 "vulkan vulkan/vulkan.h vkCreateInstance"; do
+        set -- $probe
+        pcp=$1; pch=$2; pcs=$3
+        printf '#include <%s>\nint main(void){ return (int)(size_t)&%s; }\n' "$pch" "$pcs" > /tmp/probe.c
+        pcout=$($CC -I$PREFIX/include /tmp/probe.c -o /tmp/probe \
+                 -L$PREFIX/lib $($PKGCFG --static --libs "$pcp" 2>/dev/null) $FFLIBS 2>&1)
+        if [ -x /tmp/probe ]; then
+            echo "    [$pcs via $pcp] 通过"
+        else
+            echo "    [$pcs via $pcp] 失败:"
+            printf '%s\n' "$pcout" | grep -E 'error|undefined|cannot|referenced|ld\.lld' | head -5 | sed 's/^/        /'
+        fi
+        rm -f /tmp/probe
+    done
     echo
     echo "产物:"
     ls -la "$PREFIX/lib/libffmpeg.so" "$BUILD_ROOT/ffmpeg-unstripped"

@@ -429,10 +429,13 @@ EOF
 b_vpx() {
     fetch vpx https://github.com/webmproject/libvpx/archive/refs/tags/v1.15.0.tar.gz vpx
     cd "$SRC/vpx"
-    ./configure --prefix=$PREFIX --target=arm64-android-gcc \
+    # 上一轮缓存在 install/include/vpx 的头是"不完整安装"（不装 vpx_tpl.h/vpx_integer.h），
+    # 而全局 CFLAGS 带 -I$PREFIX/include，会让 libvpx 编译时自引用这些残缺头而失败。
+    rm -rf "$PREFIX/include/vpx"
+    env CFLAGS="-fPIC -O2" CXXFLAGS="-fPIC -O2" ./configure --prefix=$PREFIX --target=arm64-android-gcc \
         --enable-static --disable-shared --disable-examples --disable-unit-tests \
         --disable-tools --disable-docs
-    make -j$(nproc) libs
+    env CFLAGS="-fPIC -O2" make -j$(nproc) libs
     make install
 }
 b_xvid() {
@@ -440,7 +443,8 @@ b_xvid() {
     cd "$SRC/xvid/build/generic"
     ./configure --prefix=$PREFIX --host=$TARGET --build=x86_64-pc-linux-gnu
     make -j$(nproc)
-    install -d $PREFIX/lib && cp -f xvidcore.a $PREFIX/lib/
+    # xvid 产出的文件叫 xvidcore.a，ffmpeg 与探测都按 lib*.a 命名，必须补前缀
+    install -d $PREFIX/lib && cp -f xvidcore.a $PREFIX/lib/libxvidcore.a
     write_pc xvidcore 1.3.7 "-lxvidcore"
 }
 
@@ -661,8 +665,6 @@ flag libopus.a              --enable-libopus
 flag libvorbis.a            --enable-libvorbis
 flag libtheora.a            --enable-libtheora
 flag libmp3lame.a           --enable-libmp3lame
-flag libmpg123.a            --enable-libmpg123
-flag libsamplerate.a        --enable-libresample
 flag libopencore-amrnb.a    --enable-libopencore-amrnb
 flag libopencore-amrwb.a    --enable-libopencore-amrwb
 flag libvo-amrwbenc.a       --enable-libvo-amrwbenc
@@ -794,6 +796,8 @@ fi
         else
             echo "  - $f :: $line"
         fi
+        # 只给第一条错误行经常看不出真正的 fatal 在哪（前面全是可选依赖的 warning）
+        echo "      尾部: $(tail -6 "$LOGDIR/$f.log" 2>/dev/null | tr '\n' ' | ' | cut -c1-400)"
     done
     echo
     if [ -f "$SRC/ffmpeg/ffbuild/config.log" ]; then

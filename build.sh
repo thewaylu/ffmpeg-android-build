@@ -65,21 +65,26 @@ run_step() {
         SKIPPED+=("$name"); echo "########## [$name] SKIP_LIBS 排除 ##########"; return 0
     fi
     # 增量：上一轮已成功且产物仍在（配合 CI 缓存），直接跳过
-    if [ -f "$BUILD_ROOT/done/$name" ] && ls "$PREFIX/lib"/*.a >/dev/null 2>&1; then
-        OK+=("$name(cached)"); echo "########## [$name] 上轮已成功，跳过 ##########"; return 0
+    local sig
+    sig=$(declare -f "$fn" | cksum | awk '{print $1}')
+    local stamp="$BUILD_ROOT/done/$name.$sig"
+    # 增量：上一轮用"同样的构建函数"成功过且产物仍在，才跳过。
+    # 改了编译参数 → 签名变 → 自动重建（否则新参数不生效，白改）。
+    if [ -f "$stamp" ] && ls "$PREFIX/lib"/*.a >/dev/null 2>&1; then
+        OK+=("$name(cached)"); echo "########## [$name] 上轮已成功（签名一致），跳过 ##########"; return 0
     fi
     echo "########## [$name] 开始 ##########"
     if ( set -eo pipefail; "$fn" ) >"$log" 2>&1; then
         if [ -n "$expect" ] && [ ! -e "$PREFIX/lib/$expect" ]; then
-            FAILED+=("$name"); rm -f "$BUILD_ROOT/done/$name"
+            FAILED+=("$name"); rm -f "$BUILD_ROOT/done/$name" "$stamp"
             echo "########## [$name] 假成功：返回 0 但没有 $expect，日志尾部 ##########"
             tail -25 "$log"
         else
-            OK+=("$name"); mkdir -p "$BUILD_ROOT/done"; touch "$BUILD_ROOT/done/$name"
+            OK+=("$name"); mkdir -p "$BUILD_ROOT/done"; touch "$stamp"; rm -f "$BUILD_ROOT/done/$name"
             echo "########## [$name] OK ##########"
         fi
     else
-        FAILED+=("$name"); rm -f "$BUILD_ROOT/done/$name"
+        FAILED+=("$name"); rm -f "$BUILD_ROOT/done/$name" "$stamp"
         echo "########## [$name] 失败，日志尾部 ##########"
         tail -25 "$log"
     fi
@@ -465,7 +470,7 @@ b_openmpt() {
     make -C "$SRC/openmpt" install PREFIX=$PREFIX NO_REVISION=1
     write_pc libopenmpt 0.7.19 "-lopenmpt -lm -lstdc++"
 }
-b_soxr()   { fetch soxr https://sourceforge.net/projects/soxr/files/soxr-0.1.3-Source.tar.xz soxr; do_cmake soxr -DWITH_LSP_DEMO=OFF -DBUILD_TESTS=OFF -DHAVE_AVX_P6=OFF -DHAVE_AVX=OFF -DHAVE_SSE2=OFF -DHAVE_SSE3=OFF; }
+b_soxr()   { fetch soxr https://sourceforge.net/projects/soxr/files/soxr-0.1.3-Source.tar.xz soxr; do_cmake soxr -DWITH_LSP_DEMO=OFF -DBUILD_TESTS=OFF -DWITH_OPENMP=OFF -DHAVE_AVX_P6=OFF -DHAVE_AVX=OFF -DHAVE_SSE2=OFF -DHAVE_SSE3=OFF; }
 b_bs2b()   { fetch bs2b https://sourceforge.net/projects/bs2b/files/libbs2b/3.1.0/libbs2b-3.1.0.tar.gz bs2b; do_autotools bs2b; write_pc libbs2b 3.1.0 "-lbs2b"; }
 b_fftw()   { fetch fftw https://fftw.org/fftw-3.3.10.tar.gz fftw; do_autotools fftw --enable-single --disable-float128 --without-python; }
 b_samplerate() { fetch samplerate https://github.com/libsndfile/libsamplerate/releases/download/0.2.2/libsamplerate-0.2.2.tar.xz samplerate; do_cmake samplerate -DBUILD_TESTING=OFF -DLIBSAMPLERATE_EXAMPLES=OFF; }
@@ -562,7 +567,7 @@ b_srt() {
             -DENABLE_TESTS=OFF -DUSE_ENCLIB=mbedtls -DENABLE_MBEDTLS=OFF
     fi
 }
-b_libssh() { fetch libssh https://git.libssh.org/projects/libssh.git/snapshot/libssh-0.11.1.tar.gz libssh; do_cmake libssh -DWITH_EXAMPLES=OFF -DWITH_GSSAPI=OFF -DWITH_SERVER=OFF -DUNIT_TESTING=OFF -DWITH_ZLIB=OFF -DOPENSSL_ROOT_DIR=$PREFIX -DOPENSSL_USE_STATIC_LIBS=ON; }
+b_libssh() { fetch libssh https://git.libssh.org/projects/libssh.git/snapshot/libssh-0.11.1.tar.gz libssh; do_cmake libssh -DWITH_EXAMPLES=OFF -DWITH_GSSAPI=OFF -DWITH_SERVER=OFF -DUNIT_TESTING=OFF -DWITH_ZLIB=OFF -DOPENSSL_INCLUDE_DIR=$PREFIX/include -DOPENSSL_CRYPTO_LIBRARY=$PREFIX/lib/libcrypto.a -DOPENSSL_SSL_LIBRARY=$PREFIX/lib/libssl.a; }
 b_zmq()    { fetch zmq https://github.com/zeromq/libzmq/releases/download/v4.3.5/zeromq-4.3.5.tar.gz zmq; do_cmake zmq -DZMQ_BUILD_TESTS=OFF -DWITH_LIBSODIUM=OFF -DWITH_TLS=OFF; }
 b_bluray() { fetch bluray https://download.videolan.org/pub/videolan/libbluray/1.3.4/libbluray-1.3.4.tar.bz2 bluray; do_autotools bluray --disable-bdjava-jar --disable-examples; }
 b_dvdread() { fetch dvdread https://download.videolan.org/pub/videolan/libdvdread/6.1.2/libdvdread-6.1.2.tar.bz2 dvdread; do_autotools dvdread --with-libcss=no; }
@@ -650,12 +655,16 @@ flag libx265.a              --enable-libx265
 flag libdav1d.a             --enable-libdav1d
 flag libaom.a               --enable-libaom
 flag libvpx.a               --enable-libvpx
-flag libxvidcore.a          --enable-libxvidcore
+flag libxvidcore.a          --enable-libxvid
+flag libSvtAv1Enc.a         --enable-libsvtav1
 flag libopus.a              --enable-libopus
 flag libvorbis.a            --enable-libvorbis
 flag libtheora.a            --enable-libtheora
 flag libmp3lame.a           --enable-libmp3lame
+flag libmpg123.a            --enable-libmpg123
+flag libsamplerate.a        --enable-libresample
 flag libopencore-amrnb.a    --enable-libopencore-amrnb
+flag libopencore-amrwb.a    --enable-libopencore-amrwb
 flag libvo-amrwbenc.a       --enable-libvo-amrwbenc
 flag libgme.a               --enable-libgme
 flag libopenmpt.a           --enable-libopenmpt
@@ -680,6 +689,8 @@ flag libfreetype.a          --enable-libfreetype
 flag libfribidi.a           --enable-libfribidi
 flag libharfbuzz.a          --enable-libharfbuzz
 flag libfontconfig.a        --enable-libfontconfig
+flag liblcms2.a             --enable-lcms2
+flag libv4l2.a              --enable-libv4l2
 
 
 # ============================================================================

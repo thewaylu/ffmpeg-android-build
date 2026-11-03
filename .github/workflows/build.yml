@@ -10,7 +10,7 @@ on:
         default: ''
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 jobs:
@@ -78,6 +78,36 @@ jobs:
               body: body.slice(0, 62000),
               labels: ['ci-failure']
             });
+
+      - name: 产物推送到 dist 分支（免登录、免 token 就能 git 拉取）
+        if: success()
+        run: |
+          set -uo pipefail
+          SO=/tmp/ffbuild/install/lib/libffmpeg.so
+          ls -l "$SO" || { echo "没有 $SO，跳过"; exit 0; }
+          SIZE=$(stat -c%s "$SO")
+          echo "产物大小: $SIZE"
+          if [ "$SIZE" -gt 90000000 ]; then
+              echo "超过 git 单文件 100MB 硬限，跳过 dist 推送（改用 Actions artifact）"
+              exit 0
+          fi
+          cd "$RUNNER_TEMP"
+          rm -rf distrepo && mkdir distrepo && cd distrepo
+          git init -q
+          git remote add origin https://github.com/"$GITHUB_REPOSITORY".git
+          git config user.name  "ci-bot"
+          git config user.email "ci-bot@users.noreply.github.com"
+          mkdir -p android-arm64
+          cp "$SO" android-arm64/libffmpeg.so
+          cp /tmp/ffbuild/build-report.txt android-arm64/build-report.txt 2>/dev/null || true
+          git add -A
+          git commit -qm "single libffmpeg.so for ${GITHUB_SHA:0:7}"
+          git push -q --force \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/$GITHUB_REPOSITORY" \
+            HEAD:refs/heads/dist
+          echo "已推送到 dist 分支: android-arm64/libffmpeg.so"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload 单文件产物
         if: always()

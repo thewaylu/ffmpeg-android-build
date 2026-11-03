@@ -500,11 +500,11 @@ b_bs2b()   {
     local d=$(dirname "$bs")
     cd "$d" || return 1
     echo "bs2b 源目录: $d"; ls
-    $CC -O2 -fPIC -I. -c bs2b.c bml37.c cbs2b.c
+    $CC -O2 -fPIC -I. -c bs2b.c
     install -d $PREFIX/lib $PREFIX/include
     rm -f $PREFIX/lib/libbs2b.a
-    $AR rcus $PREFIX/lib/libbs2b.a bs2b.o bml37.o cbs2b.o
-    cp -f bs2b.h bml37.h cbs2b.h $PREFIX/include/
+    $AR rcus $PREFIX/lib/libbs2b.a bs2b.o
+    cp -f bs2b.h bs2btypes.h bs2bversion.h $PREFIX/include/ 2>/dev/null || true
     write_pc libbs2b 3.1.0 "-lbs2b"
 }
 # 不带 --enable-single：那样只产出 libfftw3f，rubberband 的 meson 需要 fftw3（双精度）依赖
@@ -799,10 +799,9 @@ cd "$SRC/ffmpeg"
 rm -f "\$PREFIX/bin/ffmpeg" "\$PREFIX/bin/ffprobe" "\$BUILD_ROOT/ffmpeg-unstripped" "\$PREFIX/lib/libffmpeg.so"
 
 FF_OK=1
-VK_STATE=启用
-ffmpeg_configure() {   # $1=novulkan 时不带 --enable-vulkan
-    local vk=--enable-vulkan
-    [ "${1:-}" = novulkan ] && vk=
+TRY=0
+ffmpeg_configure() {   # 用全局 VK_ON 决定是否带 --enable-vulkan
+    local vk=""; [ "$VK_ON" = 1 ] && vk=--enable-vulkan
     ./configure \
         --prefix=$PREFIX \
         --pkg-config=$PKGCFG --pkg-config-flags=--static \
@@ -820,18 +819,31 @@ ffmpeg_configure() {   # $1=novulkan 时不带 --enable-vulkan
         ${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"} >"$LOGDIR/ffmpeg-configure.log" 2>&1
 }
 
-# vulkan 是硬加速接口，不是编解码器；若它检测不过，绝不该拖死整个单体构建
-if ! ffmpeg_configure; then
-    echo "!!! 带 --enable-vulkan 的 configure 失败，去掉 vulkan 重试"
-    tail -15 "$LOGDIR/ffmpeg-configure.log"
-    cp -f "$LOGDIR/ffmpeg-configure.log" "$LOGDIR/ffmpeg-configure-vulkan-attempt.log"
-    VK_STATE=降级关闭
-    if ! ffmpeg_configure novulkan; then
-        FF_OK=0
-        echo "!!! ffmpeg configure 仍失败，日志尾部："
-        tail -40 "$LOGDIR/ffmpeg-configure.log"
+VK_ON=1
+DROPPED=()
+# 自动降级：vulkan 先试，失败就摘掉它；之后 configure 报"某库 not found"，
+# 就把那个开关临时摘掉再试。任何一个库的探测问题都不该把整体拖成零产物。
+while :; do
+    TRY=$((TRY+1))
+    if ffmpeg_configure; then FF_OK=1; break; fi
+    cp -f "$LOGDIR/ffmpeg-configure.log" "$LOGDIR/ffmpeg-configure-attempt$TRY.log"
+    errline=$(grep -m1 '^ERROR: ' "$LOGDIR/ffmpeg-configure.log" | cut -c1-160)
+    echo "!!! configure 第 $TRY 次失败: ${errline:-（没有 ERROR 行，见日志）}"
+    if [ "$VK_ON" = 1 ]; then VK_ON=0; VK_STATE=降级关闭; continue; fi
+    pkg=$(printf '%s' "${errline#ERROR: }" | sed -n 's/^\([a-zA-Z0-9_.+-]\{2,\}\).*/\1/p')
+    if [ -z "$pkg" ]; then echo "无法提取库名，停止重试"; FF_OK=0; break; fi
+    case "$pkg" in lib*) flag="--enable-$pkg";; *) flag="--enable-lib$pkg";; esac
+    new=()
+    for f in "${ENABLE_FLAGS[@]}"; do [ "$f" = "$flag" ] || new+=("$f"); done
+    if [ "${#new[@]}" -eq "${#ENABLE_FLAGS[@]}" ]; then
+        echo "$pkg 不在开关列表里（可能是编译器/链接器层面的问题），停止重试"
+        FF_OK=0; tail -30 "$LOGDIR/ffmpeg-configure.log"; break
     fi
-fi
+    ENABLE_FLAGS=("${new[@]:-}")
+    DROPPED+=("$flag")
+    echo "已临时移除 $flag 重试，当前开关数: ${#ENABLE_FLAGS[@]}"
+    if [ "$TRY" -ge 10 ]; then echo "重试次数用尽"; FF_OK=0; break; fi
+done
 
 if [ $FF_OK -eq 1 ]; then
     if ! make -j$(nproc) >"$LOGDIR/ffmpeg-make.log" 2>&1; then
@@ -886,6 +898,7 @@ fi
     echo "ffmpeg 实际启用: ${ENABLE_FLAGS[*]}"
     echo
     echo "因缺产物而未启用的开关 (${#MISSING[@]}): ${MISSING[*]:-无}"
+    echo "configure 重试中被临时摘掉的开关: ${DROPPED[*]:-无}"
     echo
     echo "产物:"
     ls -la "$PREFIX/lib/libffmpeg.so" "$BUILD_ROOT/ffmpeg-unstripped"
@@ -896,6 +909,25 @@ fi
     echo "内嵌 configure 行:"
     strings -n 40 "$PREFIX/lib/libffmpeg.so" | grep -m1 'configuration:' || true
     echo "ffmpeg 构建状态: FF_OK=$FF_OK  产物: $([ -x "$BIN" ] && echo 有 || echo 无)"
+    echo
+    echo "libopenmpt 静态链接自测（复现 ffmpeg 的 pkg-config 探测）:"
+    cat > /tmp/ffmtest.c <<'TEOF'
+#include <libopenmpt/libopenmpt.h>
+int main(void){ return openmpt_module_create ? 1 : 0; }
+TEOF
+    omc=$($PKGCFG --static --cflags libopenmpt 2>&1); oml=$($PKGCFG --static --libs libopenmpt 2>&1)
+    echo "  cflags: $omc"
+    echo "  libs  : $oml"
+    echo "  头文件: $(find $PREFIX/include -name libopenmpt.h 2>/dev/null | head -1)"
+    echo "  符号数: $("$NM" --defined-only $PREFIX/lib/libopenmpt.a 2>/dev/null | grep -c openmpt_module_create)"
+    $CC $omc /tmp/ffmtest.c -o /tmp/ffmtest $oml 2>&1 | tail -8
+    echo "  自测结果: $([ -x /tmp/ffmtest ] && echo 链接通过 || echo 链接失败)"
+    echo
+    echo "pkg-config --static 解析报错的 pc 清单:"
+    for pcx in $PREFIX/lib/pkgconfig/*.pc; do
+        pn=$(basename "$pcx" .pc)
+        po=$($PKGCFG --static --libs "$pn" 2>&1) || echo "  [$pn] $po"
+    done
     echo
     echo "pkgconfig 清单:"
     ls $PREFIX/lib/pkgconfig 2>/dev/null | tr '\n' ' '

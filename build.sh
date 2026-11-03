@@ -278,7 +278,7 @@ b_openssl() {
     fetch openssl https://github.com/openssl/openssl/releases/download/openssl-3.3.2/openssl-3.3.2.tar.gz openssl
     cd "$SRC/openssl"
     export CROSS_COMPILE=$TOOLCHAIN/bin/${TARGET}${API}-
-    ./Configure android-arm64 no-shared no-tests no-asm no-engine no-apps no-cli \
+    ./Configure android-arm64 no-shared no-tests no-asm no-engine no-apps \
         --prefix=$PREFIX --openssldir=$PREFIX/ssl --sysroot=$SYSROOT \
         -D__ANDROID_API__=$API -fPIC
     [ -f Makefile ] || { echo "openssl Configure 未生成 Makefile"; return 1; }
@@ -411,7 +411,7 @@ b_vpx() {
     cd "$SRC/vpx"
     ./configure --prefix=$PREFIX --target=arm64-android-gcc \
         --enable-static --disable-shared --disable-examples --disable-unit-tests \
-        --disable-tools --disable-docs --disable-better-hw-compression
+        --disable-tools --disable-docs
     make -j$(nproc) libs
     make install
 }
@@ -605,7 +605,6 @@ run_step fftw       b_fftw
 run_step samplerate b_samplerate
 run_step rubberband b_rubberband
 run_step zimg       b_zimg
-run_step vidstab    b_vidstab libvidstab.a
 run_step vmaf       b_vmaf
 run_step mysofa     b_mysofa libmysofa.a
 run_step lcms2      b_lcms2
@@ -614,7 +613,6 @@ run_step brotli     b_brotli
 run_step highway    b_highway
 run_step jxl        b_jxl libjxl.a
 run_step glslang    b_glslang
-run_step placebo    b_placebo libplacebo.a
 run_step xml2       b_xml2
 run_step srt        b_srt libsrt.a
 run_step libssh     b_libssh libssh.a
@@ -652,7 +650,6 @@ flag libbs2b.a              --enable-libbs2b
 flag libsoxr.a              --enable-libsoxr
 flag librubberband.a        --enable-librubberband
 flag libzimg.a              --enable-libzimg
-flag libvidstab.a           --enable-libvidstab
 flag libvmaf.a              --enable-libvmaf
 flag libmysofa.a            --enable-libmysofa
 flag libwebp.a              --enable-libwebp
@@ -670,10 +667,7 @@ flag libfreetype.a          --enable-libfreetype
 flag libfribidi.a           --enable-libfribidi
 flag libharfbuzz.a          --enable-libharfbuzz
 flag libfontconfig.a        --enable-libfontconfig
-flag libplacebo.a           --enable-libplacebo
-if ls "$PREFIX"/lib/libplacebo*.a >/dev/null 2>&1; then
-    grep -q -- '--enable-libplacebo' <<<" ${ENABLE_FLAGS[*]:-} " || ENABLE_FLAGS+=(--enable-libplacebo)
-fi
+
 
 # ============================================================================
 # FFmpeg 本体
@@ -767,7 +761,7 @@ fi
     echo "各失败库的第一条错误行:"
     for f in "${FAILED[@]:-}"; do
         [ -n "$f" ] || continue
-        line=$(grep -hE 'configure: error|^CMake Error|ERROR: |: error: |fatal error:|No such file or directory' \
+        line=$(grep -hE 'configure: error|^CMake Error|ERROR: |: error: |fatal error:|No such file or directory|Could NOT find' \
                   "$LOGDIR/$f.log" "$LOGDIR/$f-configure.log" "$LOGDIR/$f-make.log" 2>/dev/null \
                 | grep -vE 'Looking for|Performing Test|Fetching value|Check for working' | head -1 | cut -c1-220)
         if [ -z "$line" ]; then
@@ -778,6 +772,13 @@ fi
         fi
     done
     echo
+    if [ -f "$SRC/ffmpeg/ffbuild/config.log" ]; then
+        echo "ffmpeg ffbuild/config.log 关键行:"
+        grep -E 'error|undefined|cannot|No such file|failure|ld\.lld' "$SRC/ffmpeg/ffbuild/config.log" 2>/dev/null | tail -25
+        echo "--- config.log 末尾 ---"
+        tail -25 "$SRC/ffmpeg/ffbuild/config.log"
+        echo
+    fi
     if [ $FF_OK -eq 0 ] && [ -s "$LOGDIR/ffmpeg-configure.log" ]; then
         echo "ffmpeg configure 日志尾部:"
         tail -25 "$LOGDIR/ffmpeg-configure.log"

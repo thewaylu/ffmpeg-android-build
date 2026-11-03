@@ -726,8 +726,14 @@ echo "=== 安装新 Vulkan-Headers（FFmpeg 9 读头里的 VK_HEADER_VERSION，�
 fetch vulkan_hdr "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.3.278.tar.gz https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.3.275.tar.gz" vulkan_hdr
 if [ -d "$SRC/vulkan_hdr/include/vulkan" ]; then
     mkdir -p $PREFIX/include
-    rm -rf $PREFIX/include/vulkan
-    cp -rf "$SRC/vulkan_hdr/include/vulkan" $PREFIX/include/
+    # 整个 include/ 都要拷：新版把 vk_video/、vk_struct_helper/ 拆成兄弟目录，
+    # vulkan_core.h 会 #include <vk_video/vulkan_video_codec_av1std.h>，
+    # 只拷 vulkan/ 反而把自己搞成"头文件缺失"
+    rm -rf $PREFIX/include/vulkan $PREFIX/include/vk_video $PREFIX/include/vk_struct_helper
+    cp -rf "$SRC/vulkan_hdr/include/." $PREFIX/include/
+    ls -d $PREFIX/include/vk_video $PREFIX/include/vulkan 2>/dev/null | tr '
+' ' '
+    echo
     echo "已装头文件，VK_HEADER_VERSION=$(sed -n 's/^#  *define  *VK_HEADER_VERSION  *\([0-9]*\).*/\1/p' $PREFIX/include/vulkan/vulkan_core.h | head -1)"
 else
     echo "未取得新头，退回 NDK sysroot 的头（vulkan 可能仍被判定不可用）"
@@ -833,7 +839,7 @@ ffmpeg_configure() {   # 用全局 VK_ON 决定是否带 --enable-vulkan
         --enable-indev=lavfi \
         --extra-cflags="-I$PREFIX/include -fPIC -O2" \
         --extra-ldflags="-L$PREFIX/lib -static-libstdc++" \
-        --extra-libs="-lm -ldl -llog -landroid -lmediandk -lz -lbz2 -llzma -lc++_static -lc++abi" \
+        --extra-libs="-lm -ldl -llog -landroid -lmediandk -lz -lbz2 -llzma -lc++_static -lc++abi -lmpg123 -lvorbisfile -lvorbis -logg" \
         --disable-doc --disable-debug --disable-stripping \
         ${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"} >"$LOGDIR/ffmpeg-configure.log" 2>&1
 }

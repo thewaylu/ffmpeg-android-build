@@ -113,6 +113,8 @@ fetch() {
 gitclone() {
     local name=$1 url=$2 dir=$3 ref=${4:-}
     if [ -d "$SRC/$dir/.git" ]; then echo "[$name] 仓库已在"; return 0; fi
+    # 上一轮失败可能留下"有文件但无 .git"的脏目录（CI 缓存会把它带回来）
+    if [ -d "$SRC/$dir" ]; then echo "[$name] 清理脏目录后重新克隆"; rm -rf "$SRC/$dir"; fi
     echo "[$name] git clone $url ${ref:+@$ref}"
     if [ -n "$ref" ]; then
         git clone --depth 1 --branch "$ref" --recursive "$url" "$SRC/$dir"
@@ -275,11 +277,14 @@ b_expat() {
 b_openssl() {
     fetch openssl https://github.com/openssl/openssl/releases/download/openssl-3.3.2/openssl-3.3.2.tar.gz openssl
     cd "$SRC/openssl"
-    ./Configure android-arm64 no-shared no-tests no-asm no-engine no-apps \
+    export CROSS_COMPILE=$TOOLCHAIN/bin/${TARGET}${API}-
+    ./Configure android-arm64 no-shared no-tests no-asm no-engine no-apps no-cli \
         --prefix=$PREFIX --openssldir=$PREFIX/ssl --sysroot=$SYSROOT \
-        "-D__ANDROID_API__=$API" "-fPIC"
-    make build_libs -j$(nproc)
-    make install_sw install_ssldirs -j$(nproc) >/dev/null
+        -D__ANDROID_API__=$API -fPIC
+    [ -f Makefile ] || { echo "openssl Configure 未生成 Makefile"; return 1; }
+    make -j"$(nproc)" >"$LOGDIR/openssl-make.log" 2>&1 || { tail -20 "$LOGDIR/openssl-make.log"; return 1; }
+    make install_sw install_ssldirs >>"$LOGDIR/openssl-make.log" 2>&1 || \
+        make install_sw >>"$LOGDIR/openssl-make.log" 2>&1 || true
     for a in libcrypto.a libssl.a; do
         [ -f "$PREFIX/lib/$a" ] || cp -f "$a" "$PREFIX/lib/$a" 2>/dev/null || true
     done
@@ -364,11 +369,17 @@ b_dav1d() {
 b_aom() {
     gitclone aom https://aomedia.googlesource.com/aom aom
     cd "$SRC/aom"
-    [ -x ./configure ] || { echo "aom 源码里没有 ./configure"; ls | head -20; return 1; }
-    ./configure --prefix=$PREFIX --target=arm64-android-gcc --enable-static \
-        --disable-shared --disable-docs --disable-tools --disable-examples \
-        --disable-unit-tests --enable-neon --runtime-cpu-detect
-    make -j"$(nproc)"; make install
+    if [ -f ./configure ]; then
+        chmod +x ./configure
+        ./configure --prefix=$PREFIX --target=arm64-android-gcc --enable-static \
+            --disable-shared --disable-docs --disable-tools --disable-examples \
+            --disable-unit-tests --enable-neon --runtime-cpu-detect
+        make -j"$(nproc)"; make install
+    else
+        echo "aom 无 ./configure（目录：$(ls | tr '\n' ' ')），改用 cmake"
+        do_cmake aom -DENABLE_TESTS=OFF -DENABLE_EXAMPLES=OFF -DENABLE_TOOLS=OFF -DENABLE_DOCS=OFF
+    fi
+    have libaom.a || { echo "aom 没产出 libaom.a"; return 1; }
 }
 b_svtav1() {
     fetch svtav1 https://gitlab.com/AOMediaCodec/SVT-AV1/-/archive/v2.3.0/SVT-AV1-v2.3.0.tar.bz2 svtav1
@@ -388,7 +399,8 @@ ar = "$AR"
 linker = "$CC"
 rustflags = ["-C", "link-arg=--sysroot=$SYSROOT", "-C", "link-arg=-static-libstdc++"]
 EOF
-    cargo rustc --release --target aarch64-linux-android --lib -- --crate-type=staticlib
+    env -u LDFLAGS -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u PKG_CONFIG_LIBDIR -u PKG_CONFIG_PATH \
+        cargo rustc --release --target aarch64-linux-android --lib -- --crate-type=staticlib
     [ -f target/aarch64-linux-android/release/librav1e.a ] || { echo "rav1e 没产出 staticlib"; ls target/aarch64-linux-android/release/ | head -20; return 1; }
     install -m 644 target/aarch64-linux-android/release/librav1e.a $PREFIX/lib/
     install -m 644 rav1e.h $PREFIX/include/
@@ -399,8 +411,7 @@ b_vpx() {
     cd "$SRC/vpx"
     ./configure --prefix=$PREFIX --target=arm64-android-gcc \
         --enable-static --disable-shared --disable-examples --disable-unit-tests \
-        --disable-tools --disable-docs --disable-better-hw-compression \
-        --extra-cflags="-fPIC -I$PREFIX/include" --extra-ldflags="-L$PREFIX/lib"
+        --disable-tools --disable-docs --disable-better-hw-compression
     make -j$(nproc) libs
     make install
 }
@@ -431,7 +442,7 @@ b_theora() {
 b_lame()   { fetch lame https://sourceforge.net/projects/lame/files/lame/3.100/lame-3.100.tar.gz lame; do_autotools lame --disable-frontend; }
 b_amrnb()  { fetch amr https://sourceforge.net/projects/opencore-amr/files/opencore-amr/opencore-amr-0.1.6.tar.gz opencore-amr; do_autotools opencore-amr; }
 b_amrwb()  { fetch voamr https://sourceforge.net/projects/opencore-amr/files/vo-amrwbenc/vo-amrwbenc-0.1.3.tar.gz vo-amrwbenc; do_autotools vo-amrwbenc; }
-b_gme()    { gitclone gme https://bitbucket.org/mpyne/game-music-emu.git gme 0.6.4; do_cmake gme; }
+b_gme()    { gitclone gme https://github.com/libgme/game-music-emu.git gme 0.6.4; do_cmake gme; }
 b_mpg123() { fetch mpg123 https://www.mpg123.de/download/mpg123-1.32.10.tar.bz2 mpg123; do_autotools mpg123 --disable-modules --disable-network --with-realtime=none; }
 b_openmpt() {
     fetch openmpt "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.19+release.makefile.tar.gz" openmpt
@@ -453,7 +464,12 @@ b_rubberband() {
 # 第 5 层：滤镜 / 图像 / 质量测量
 # ============================================================================
 b_zimg()    { fetch zimg https://github.com/sekrit-twc/zimg/archive/refs/tags/release-3.0.5.tar.gz zimg; do_autotools zimg --disable-tests; }
-b_vidstab() { fetch vidstab https://github.com/openkylin/libvidstab/archive/refs/tags/upstream/1.1.0.tar.gz vidstab; do_cmake vidstab -DUSE_SSE2=OFF -DUSE_SSE=OFF; }
+b_vidstab() {
+    fetch vidstab https://github.com/openkylin/libvidstab/archive/refs/tags/upstream/1.1.0.tar.gz vidstab
+    # 该库在 CMakeLists 里无条件加 -msse2，交叉到 arm64 必然失败，先从源码剔除
+    grep -rl 'msse2' "$SRC/vidstab" 2>/dev/null | xargs -r sed -i 's/-msse2//g'
+    do_cmake vidstab -DUSE_SSE2=OFF -DUSE_SSE=OFF
+}
 b_mysofa()  { fetch mysofa https://github.com/hoene/libmysofa/archive/refs/tags/v1.3.2.tar.gz mysofa; do_cmake mysofa -DJSON_TESTS=OFF -DCMOD_TESTS=OFF -DBUILD_TESTING=OFF -DCMAKE_DISABLE_FIND_PACKAGE_CUnit=ON -DBUILD_TESTS=OFF -DENABLE_TESTS=OFF; }
 b_lcms2()   { fetch lcms2 https://github.com/mm2/Little-CMS/archive/refs/tags/lcms2.14.tar.gz lcms2; do_autotools lcms2; }
 b_webp()    {
@@ -472,7 +488,7 @@ b_jxl()     {
     do_cmake jxl -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF \
         -DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF \
         -DJPEGXL_ENABLE_PLUGINS=OFF -DJPEGXL_ENABLE_SKCMS=OFF \
-        -DJPEGXL_FORCE_SYSTEM_BROTLI=OFF -DJPEGXL_ENABLE_VIEWERS=OFF
+        -DJPEGXL_FORCE_SYSTEM_BROTLI=OFF -DJPEGXL_ENABLE_VIEWERS=OFF -DJPEGXL_ENABLE_SJPEG=OFF
 }
 b_vmaf() {
     fetch vmaf https://github.com/Netflix/vmaf/archive/refs/tags/v3.0.0.tar.gz vmaf
@@ -525,13 +541,13 @@ b_srt() {
     fetch srt https://github.com/Haivision/srt/archive/refs/tags/v1.5.3.tar.gz srt
     if have libcrypto.a; then
         do_cmake srt -DENABLE_SHARED=OFF -DENABLE_STATIC=ON -DENABLE_APPS=OFF \
-            -DENABLE_TESTS=OFF -DUSE_ENCLIB=openssl
+            -DENABLE_TESTS=OFF -DENABLE_ENCRYPTION=ON -DUSE_ENCLIB=openssl
     else
         do_cmake srt -DENABLE_SHARED=OFF -DENABLE_STATIC=ON -DENABLE_APPS=OFF \
             -DENABLE_TESTS=OFF -DUSE_ENCLIB=mbedtls -DENABLE_MBEDTLS=OFF
     fi
 }
-b_libssh() { fetch libssh https://git.libssh.org/projects/libssh.git/snapshot/libssh-0.11.1.tar.gz libssh; do_cmake libssh -DWITH_EXAMPLES=OFF -DWITH_GSSAPI=OFF -DWITH_SERVER=OFF -DUNIT_TESTING=OFF -DWITH_ZLIB=ON; }
+b_libssh() { fetch libssh https://git.libssh.org/projects/libssh.git/snapshot/libssh-0.11.1.tar.gz libssh; do_cmake libssh -DWITH_EXAMPLES=OFF -DWITH_GSSAPI=OFF -DWITH_SERVER=OFF -DUNIT_TESTING=OFF -DWITH_ZLIB=OFF -DWITH_EXAMPLES_ELSE=OFF; }
 b_zmq()    { fetch zmq https://github.com/zeromq/libzmq/releases/download/v4.3.5/zeromq-4.3.5.tar.gz zmq; do_cmake zmq -DZMQ_BUILD_TESTS=OFF -DWITH_LIBSODIUM=OFF -DWITH_TLS=OFF; }
 b_bluray() { fetch bluray https://download.videolan.org/pub/videolan/libbluray/1.3.4/libbluray-1.3.4.tar.bz2 bluray; do_autotools bluray --disable-bdjava-jar --disable-examples; }
 b_dvdread() { fetch dvdread https://download.videolan.org/pub/videolan/libdvdread/6.1.2/libdvdread-6.1.2.tar.bz2 dvdread; do_autotools dvdread --with-libcss=no; }
@@ -639,7 +655,6 @@ flag libzimg.a              --enable-libzimg
 flag libvidstab.a           --enable-libvidstab
 flag libvmaf.a              --enable-libvmaf
 flag libmysofa.a            --enable-libmysofa
-flag liblcms2.a             --enable-liblcms2
 flag libwebp.a              --enable-libwebp
 flag libjxl.a               --enable-libjxl
 flag libxml2.a              --enable-libxml2

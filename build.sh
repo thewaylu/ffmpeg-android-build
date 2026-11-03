@@ -435,7 +435,7 @@ b_jxl()     {
     do_cmake jxl -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF \
         -DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF \
         -DJPEGXL_ENABLE_PLUGINS=OFF -DJPEGXL_ENABLE_SKCMS=OFF \
-        -DJPEGXL_FORCE_SYSTEM_BROTLI=ON -DJPEGXL_ENABLE_VIEWERS=OFF
+        -DJPEGXL_FORCE_SYSTEM_BROTLI=OFF -DJPEGXL_ENABLE_VIEWERS=OFF
 }
 b_vmaf() {
     fetch vmaf https://github.com/Netflix/vmaf/archive/refs/tags/v3.0.0.tar.gz vmaf
@@ -443,7 +443,7 @@ b_vmaf() {
     rm -rf build
     meson setup build . --cross-file "$BUILD_ROOT/cross.txt" --prefix=$PREFIX \
         --default-library=static --buildtype=release \
-        -Denable_tests=false -Denable_docs=false -Dbuilt_in_models=true -Dasm=true
+        -Denable_tests=false -Denable_docs=false -Dbuilt_in_models=true 
     ninja -C build; ninja -C build install
 }
 
@@ -458,8 +458,8 @@ b_placebo() {
     fetch placebo https://code.videolan.org/videolan/libplacebo/-/archive/v6.338.0/libplacebo-v6.338.0.tar.bz2 placebo
     cd "$SRC/placebo"
     git submodule update --init --depth 1 src/vulkan src/gl 2>/dev/null || true
-    do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=true \
-        -Ddemos=false -Dtests=false -Dopengl=disabled -Dgles=disabled
+    do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=enabled \
+        -Ddemos=false -Dtests=false -Dgl=disabled
 }
 
 # ============================================================================
@@ -469,7 +469,7 @@ b_xml2() {
     fetch xml2 https://github.com/GNOME/libxml2/archive/refs/tags/v2.13.5.tar.gz xml2
     do_cmake xml2 -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_ICONV=OFF \
         -DLIBXML2_WITH_TESTS=OFF -DLIBXML2_WITH_PROGRAMS=OFF \
-        -DLIBXML2_WITH_ZLIB=ON -DLIBXML2_WITH_LZMA=ON
+        -DLIBXML2_WITH_ZLIB=OFF -DLIBXML2_WITH_LZMA=OFF
 }
 b_srt() {
     fetch srt https://github.com/Haivision/srt/archive/refs/tags/v1.5.3.tar.gz srt
@@ -625,7 +625,8 @@ echo "启用开关: ${ENABLE_FLAGS[*]:-}"
 fetch ffmpeg "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VER.tar.xz" ffmpeg
 cd "$SRC/ffmpeg"
 
-./configure \
+FF_OK=1
+if ! ./configure \
     --prefix=$PREFIX \
     --pkg-config=$PKGCFG --pkg-config-flags=--static \
     --cc=$CC --cxx=$CXX --ar=$AR --nm=$NM --ranlib=$RANLIB --strip=$STRIP \
@@ -638,17 +639,32 @@ cd "$SRC/ffmpeg"
     --extra-ldflags="-L$PREFIX/lib -static-libstdc++" \
     --extra-libs="-lm -ldl -llog -landroid -lmediandk -lz -lbz2 -llzma -lpthread" \
     --disable-doc --disable-debug --disable-stripping \
-    ${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"}
+    ${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"} 2>"$LOGDIR/ffmpeg-configure.log"; then
+    FF_OK=0
+    echo "!!! ffmpeg configure 失败，日志尾部："
+    tail -40 "$LOGDIR/ffmpeg-configure.log"
+fi
 
-make -j$(nproc)
-make install
+if [ $FF_OK -eq 1 ]; then
+    if ! make -j$(nproc) >"$LOGDIR/ffmpeg-make.log" 2>&1; then
+        FF_OK=0
+        echo "!!! ffmpeg make 失败，日志尾部："
+        tail -60 "$LOGDIR/ffmpeg-make.log"
+    else
+        make install >>"$LOGDIR/ffmpeg-make.log" 2>&1
+    fi
+fi
 
 BIN=$PREFIX/bin/ffmpeg
-[ -x "$BIN" ] || { echo "FATAL: 未产出 ffmpeg 可执行文件"; exit 1; }
-cp -f "$BIN" "$BUILD_ROOT/ffmpeg-unstripped"
-"$STRIP" --strip-unneeded "$BIN"
-cp -f "$BIN" "$PREFIX/lib/libffmpeg.so"
-chmod 755 "$PREFIX/lib/libffmpeg.so"
+if [ -x "$BIN" ]; then
+    cp -f "$BIN" "$BUILD_ROOT/ffmpeg-unstripped"
+    "$STRIP" --strip-unneeded "$BIN"
+    cp -f "$BIN" "$PREFIX/lib/libffmpeg.so"
+    chmod 755 "$PREFIX/lib/libffmpeg.so"
+    echo "=== 单文件已产出 ==="
+else
+    echo "=== 未产出 ffmpeg 可执行文件（FF_OK=$FF_OK）==="
+fi
 
 # ============================================================================
 # 报告
@@ -673,7 +689,30 @@ chmod 755 "$PREFIX/lib/libffmpeg.so"
     echo
     echo "内嵌 configure 行:"
     strings -n 40 "$PREFIX/lib/libffmpeg.so" | grep -m1 'configuration:' || true
+    echo "ffmpeg 构建状态: FF_OK=$FF_OK  产物: $([ -x "$BIN" ] && echo 有 || echo 无)"
+    echo
+    echo "各失败库的第一条错误行:"
+    for f in "${FAILED[@]:-}"; do
+        [ -n "$f" ] || continue
+        line=$(grep -m1 -iE 'error:|ERROR|undefined|No such file|not found|Cannot open' \
+                  "$LOGDIR/$f.log" "$LOGDIR/$f-configure.log" "$LOGDIR/$f-make.log" 2>/dev/null \
+                | sed 's/^[^:]*:[0-9]*:\?//' | cut -c1-200)
+        echo "  - $f :: ${line:-（日志里没匹配到错误行，见完整日志）}"
+    done
+    echo
+    if [ $FF_OK -eq 0 ] && [ -s "$LOGDIR/ffmpeg-configure.log" ]; then
+        echo "ffmpeg configure 日志尾部:"
+        tail -25 "$LOGDIR/ffmpeg-configure.log"
+    fi
+    if [ $FF_OK -eq 0 ] && [ -s "$LOGDIR/ffmpeg-make.log" ]; then
+        echo "ffmpeg make 日志尾部:"
+        tail -30 "$LOGDIR/ffmpeg-make.log"
+    fi
 } | tee "$BUILD_ROOT/build-report.txt"
 
 echo ""
-echo "=== 完成 ==="
+if [ ! -x "$BIN" ]; then
+    echo "=== 构建失败：见上面报告 ==="
+    exit 1
+fi
+echo "=== 完成：单文件在 $PREFIX/lib/libffmpeg.so ==="

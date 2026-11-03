@@ -63,18 +63,20 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            let tail = '';
-            for (const p of ['/tmp/ffbuild-stdout.log', '/tmp/ffbuild/build-fail.log']) {
-              try { tail = fs.readFileSync(p, 'utf8').slice(-14000); break; } catch (e) {}
-            }
-            if (!tail) tail = '(读不到日志文件)';
+            const read = (p, n) => { try { return fs.readFileSync(p, 'utf8').slice(-n); } catch (e) { return ''; } };
+            // 优先发完整构建报告（含每个失败库的第一条错误行），再附 stdout 尾部
+            let report = read('/tmp/ffbuild/build-report.txt', 40000);
+            let stdout = read('/tmp/ffbuild-stdout.log', 6000);
+            const body =
+              (report ? `**构建报告：**\n\n\`\`\`\n${report}\n\`\`\`\n\n` : '') +
+              (stdout ? `**stdout 尾部：**\n\n\`\`\`\n${stdout}\n\`\`\`\n\n` : (report ? '' : '(读不到日志文件)\n\n')) +
+              `run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const sha = context.sha.slice(0, 7);
-            const title = `CI 失败 ${sha} run#${context.runNumber} ${new Date().toISOString().slice(0,16)}Z`;
-            const body = `构建失败，日志尾部：\n\n\`\`\`\n${tail}\n\`\`\`\n\n` +
-              `run: ${context.payload.repository ? 'https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId : ''}`;
             await github.rest.issues.create({
               owner: context.repo.owner, repo: context.repo.repo,
-              title, body, labels: ['ci-failure']
+              title: `CI 失败 ${sha} run#${context.runNumber} ${new Date().toISOString().slice(0,16)}Z`,
+              body: body.slice(0, 62000),
+              labels: ['ci-failure']
             });
 
       - name: Upload 单文件产物

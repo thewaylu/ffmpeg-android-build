@@ -478,11 +478,10 @@ b_amrwb()  { fetch voamr https://sourceforge.net/projects/opencore-amr/files/vo-
 b_gme()    { gitclone gme https://github.com/libgme/game-music-emu.git gme 0.6.4; do_cmake gme; }
 b_mpg123() { fetch mpg123 https://www.mpg123.de/download/mpg123-1.32.10.tar.bz2 mpg123; do_autotools mpg123 --disable-modules --disable-network --with-realtime=none; }
 b_openmpt() {
-    fetch openmpt "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.19+release.makefile.tar.gz" openmpt
-    make -C "$SRC/openmpt" -j"$(nproc)" PREFIX=$PREFIX NO_REVISION=1
-    make -C "$SRC/openmpt" install PREFIX=$PREFIX NO_REVISION=1
-    # openmpt 的 make install 会同时装 .so 与 .a，而 -lopenmpt 优先选中 .so，
-    # 单体里就留下 NEEDED libopenmpt.so.N —— 删掉副本，只保留静态库
+    # 必须用 autotools 版：makefile 版只产出 libopenmpt.so，根本没有静态库，
+    # 而单体不能留 NEEDED libopenmpt.so.N（上一版删 .so 的操作等于把库删空了）
+    fetch openmpt "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.19+release.autotools.tar.gz https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.19%2Brelease.autotools.tar.gz" openmpt
+    do_autotools openmpt --disable-libopenmpt-soundtouch
     rm -f $PREFIX/lib/libopenmpt.so*
     write_pc libopenmpt 0.7.19 "-lopenmpt -lm -lc++_static -lc++abi"
 }
@@ -496,8 +495,9 @@ b_bs2b()   {
         cp -f "$f" "$SRC/bs2b/" 2>/dev/null || true
     done
     # 它的 autotools 太旧（config.sub 不认 android），而全部实现就 3 个 .c，直接手工编静态库
-    local d=$(find "$SRC/bs2b" -type d -name libbs2b 2>/dev/null | head -1)
-    [ -n "$d" ] || { echo "找不到 bs2b 源目录"; find "$SRC/bs2b" -maxdepth 3 -type d; return 1; }
+    local bs=$(find "$SRC/bs2b" -name bs2b.c 2>/dev/null | head -1)
+    [ -n "$bs" ] || { echo "找不到 bs2b.c"; find "$SRC/bs2b" -maxdepth 3 -type d; return 1; }
+    local d=$(dirname "$bs")
     cd "$d" || return 1
     echo "bs2b 源目录: $d"; ls
     $CC -O2 -fPIC -I. -c bs2b.c bml37.c cbs2b.c
@@ -514,7 +514,7 @@ b_rubberband() {
     fetch rubberband https://breakfastquay.com/files/releases/rubberband-4.0.0.tar.bz2 rubberband
     # rubberband 3.x 起改成 meson 工程，没有 configure.ac（autoreconf 直接报错）
     # auto-features=disabled 一次性关掉 demo/tests/jni 等非必需 feature
-    do_meson rubberband -Dauto-features=disabled
+    do_meson rubberband -Dauto_features=disabled
     write_pc rubberband-2.0 4.0.0 "-lrubberband -lsamplerate -lfftw3"
     write_pc rubberband 4.0.0 "-lrubberband -lsamplerate -lfftw3"
 }
@@ -665,7 +665,7 @@ run_step amrnb      b_amrnb
 run_step amrwb      b_amrwb
 run_step gme        b_gme libgme.a
 run_step mpg123     b_mpg123
-run_step openmpt    b_openmpt
+run_step openmpt    b_openmpt libopenmpt.a
 run_step soxr       b_soxr
 run_step bs2b       b_bs2b libbs2b.a
 run_step fftw       b_fftw
@@ -878,6 +878,10 @@ fi
     echo "SKIP_LIBS 排除 (${#SKIPPED[@]}): ${SKIPPED[*]:-无}"
     echo
     echo "vulkan 状态: $VK_STATE"
+    if [ -s "$LOGDIR/ffmpeg-configure-vulkan-attempt.log" ]; then
+        echo "带 vulkan 首次尝试的日志尾部（看 vulkan 到底缺什么）:"
+        tail -12 "$LOGDIR/ffmpeg-configure-vulkan-attempt.log"
+    fi
     echo
     echo "ffmpeg 实际启用: ${ENABLE_FLAGS[*]}"
     echo

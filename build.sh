@@ -625,6 +625,14 @@ b_placebo() {
     done
     echo "已放进 sysroot 的 glslang 库: $(ls $SYSROOT/usr/lib/aarch64-linux-android/lib*.a 2>/dev/null | xargs -n1 basename | tr '
 ' ' ')"
+    # libplacebo 的 convert.cc 需要 fast_float（header-only）。离线取不到它的
+    # meson subproject wrap，就退化到要求系统提供 <fast_float/fast_float.h>。
+    fetch fast_float https://github.com/fastfloat/fast_float/archive/refs/tags/v6.1.1.tar.gz fast_float || return 1
+    mkdir -p $PREFIX/include/fast_float
+    _ff=$(find "$SRC/fast_float" -name fast_float.h -type f | head -1)
+    [ -n "$_ff" ] || { echo "找不到 fast_float.h"; return 1; }
+    cp -f "$_ff" $PREFIX/include/fast_float/fast_float.h
+    echo "已装 fast_float: $PREFIX/include/fast_float/fast_float.h"
     do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=enabled -Dopengl=disabled -Dd3d11=disabled -Dshaderc=disabled -Ddovi=disabled -Dlibdovi=disabled -Dxxhash=disabled -Dvulkan-registry=$PREFIX/share/vulkan/registry/vk.xml -Ddemos=false -Dtests=false -Dbench=false -Dfuzz=false
     ls -l $PREFIX/lib/libplacebo.a 2>/dev/null
 }

@@ -580,7 +580,7 @@ vulkan_headers() {
 
 b_glslang() {
     fetch glslang https://github.com/KhronosGroup/glslang/archive/refs/tags/15.1.0.tar.gz glslang
-    do_cmake glslang -DENABLE_OPT=OFF -DGLSLANG_TESTS=OFF -DENABLE_HLSL=OFF -DBUILD_TESTING=OFF
+    do_cmake glslang -DENABLE_OPT=OFF -DGLSLANG_TESTS=OFF -DENABLE_HLSL=ON -DBUILD_TESTING=OFF
     # glslang 的 CMake install 清单不全（实测漏了 OGLCompiler），但构建目录里其实都产出了；
     # 而 libplacebo 的 meson 会逐个 find_library 要它们，缺一个就整个配置失败。
     find "$SRC/glslang/build" -name "*.a" -exec cp -f {} $PREFIX/lib/ \; 2>/dev/null || true
@@ -605,7 +605,9 @@ b_placebo() {
     fetch placebo https://code.videolan.org/videolan/libplacebo/-/archive/v7.351.0/libplacebo-v7.351.0.tar.bz2 placebo
     # meson 的 cpp.find_library('SPIRV') 只搜编译器 --print-search-dirs 报出的内建目录，
     # 根本不认 -L / link_args，所以把 glslang 的静态库直接放进 sysroot 的库目录。
-    # glslang 15.1 已经把 OGLCompilersDLL 合并进 MachineIndependent，不再产出
+    # 真因：glslang::InitializeProcess/FinalizeProcess 定义在 OGLCompilersDLL/Initialize.cpp，
+    # 而 add_subdirectory(OGLCompilersDLL) 挂在 ENABLE_HLSL 下面 —— 之前设 OFF 才导致
+    # placebo 找不到 libOGLCompiler.a。现在 ENABLE_HLSL=ON 会产出真库，下面的占位逻辑自动让位。
     # libOGLCompiler.a；而 libplacebo 6.338 的 static 分支仍然硬性
     # find_library('OGLCompiler', required: true)。它只要"这个库存在"，
     # 符号实际都在别的库里，所以造一个占位归档即可过关。

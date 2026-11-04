@@ -767,7 +767,13 @@ run_step brotli     b_brotli
 run_step highway    b_highway
 run_step jxl        b_jxl libjxl.a
 run_step glslang    b_glslang
-run_step placebo    b_placebo libplacebo.a
+# run_step placebo 已停用（2026-11-04 止损）：
+# libplacebo 本体能编出来，但 FFmpeg 链接它时始终缺 glslang::InitializeProcess，
+# 而那个符号应在 libOGLCompiler.a 里——缓存里存的很可能是早先造的占位空库，
+# 要真解决得先确认 glslang 在 ENABLE_HLSL=ON 下是否真的产出了 libOGLCompiler.a。
+# 收益只有 placebo 这 1 个滤镜，18 个 *_vulkan 滤镜不依赖它（靠宿主 glslangValidator），
+# 所以先停用，避免每轮多花 4-5 分钟。函数 b_placebo 保留，下次验证后取消注释即可。
+# run_step placebo    b_placebo libplacebo.a
 run_step xml2       b_xml2
 run_step srt        b_srt libsrt.a
 # libssh 主动排除：只服务 sftp:// 协议，Android 端本地转码用不到；

@@ -895,7 +895,9 @@ flag libfribidi.a           --enable-libfribidi
 flag libharfbuzz.a          --enable-libharfbuzz
 flag libfontconfig.a        --enable-libfontconfig
 flag liblcms2.a             --enable-lcms2
-flag libplacebo.a           --enable-libplacebo
+# flag libplacebo.a 一并停用：缓存里还留着上一轮的 libplacebo.a，
+# 探测会命中并加上开关，然后 configure 失败再被摘掉，白跑一轮 configure。
+# flag libplacebo.a           --enable-libplacebo
 flag libv4l2.a              --enable-libv4l2
 
 

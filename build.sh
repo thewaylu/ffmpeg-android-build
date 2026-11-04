@@ -577,6 +577,11 @@ vulkan_headers() {
 b_glslang() {
     fetch glslang https://github.com/KhronosGroup/glslang/archive/refs/tags/15.1.0.tar.gz glslang
     do_cmake glslang -DENABLE_OPT=OFF -DGLSLANG_TESTS=OFF -DENABLE_HLSL=OFF -DBUILD_TESTING=OFF
+    # glslang 的 CMake install 清单不全（实测漏了 OGLCompiler），但构建目录里其实都产出了；
+    # 而 libplacebo 的 meson 会逐个 find_library 要它们，缺一个就整个配置失败。
+    find "$SRC/glslang/build" -name "*.a" -exec cp -f {} $PREFIX/lib/ \; 2>/dev/null || true
+    echo "glslang 静态库: $(ls $PREFIX/lib/lib{SPIRV,glslang,MachineIndependent,GenericCodeGen,OSDependent,SPVRemapper,OGLCompiler,HLSL,glslang-default-resource-limits}*.a 2>/dev/null | xargs -n1 basename | tr '
+' ' ')"
 }
 b_glslang_pc() {
     cat > $PREFIX/lib/pkgconfig/glslang.pc <<EOF
@@ -596,8 +601,11 @@ b_placebo() {
     fetch placebo https://code.videolan.org/videolan/libplacebo/-/archive/v6.338.0/libplacebo-v6.338.0.tar.bz2 placebo
     # meson 的 cpp.find_library('SPIRV') 只搜编译器 --print-search-dirs 报出的内建目录，
     # 根本不认 -L / link_args，所以把 glslang 的静态库直接放进 sysroot 的库目录。
-    for _a in SPIRV glslang MachineIndependent GenericCodeGen OSDependent SPVRemapper               glslang-default-resource-limits; do
-        [ -f "$PREFIX/lib/lib$_a.a" ] && cp -f "$PREFIX/lib/lib$_a.a" "$SYSROOT/usr/lib/aarch64-linux-android/" 2>/dev/null || true
+    for _f in "$PREFIX"/lib/lib*.a; do
+        case "$(basename "$_f")" in
+            libSPIRV.a|libglslang*.a|libMachineIndependent.a|libGenericCodeGen.a|libOSDependent.a|libSPVRemapper.a|libOGLCompiler.a|libHLSL.a)
+                cp -f "$_f" "$SYSROOT/usr/lib/aarch64-linux-android/" 2>/dev/null || true ;;
+        esac
     done
     echo "已放进 sysroot 的 glslang 库: $(ls $SYSROOT/usr/lib/aarch64-linux-android/lib*.a 2>/dev/null | xargs -n1 basename | tr '
 ' ' ')"

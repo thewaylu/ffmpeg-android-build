@@ -111,6 +111,41 @@ libssh 的第一条错误是 `Could NOT find NaCl`（可选依赖的 warning）�
 
 ---
 
+**A8. 反斜杠转义 `$` 让防护长期空转（最该反省的一条）**
+
+为了防 E2 那个"旧产物冒充新结果"的问题，我加了：
+
+```sh
+rm -f "\$PREFIX/bin/ffmpeg" "\$PREFIX/bin/ffprobe" ...
+```
+
+看着没问题，但 `\$` 在 bash 里是**字面的美元符号**，于是删除的目标是名为
+`$PREFIX/bin/ffmpeg` 的相对路径 —— 一个永远不存在的路径。
+结果是：这条防护写进了文档、提交进了仓库、我在文档里宣布"已修"，
+但它从 run #95 到 run #104 **一次都没有真正删过任何东西**。
+
+发现契机是 run #104 出现自相矛盾的 `FF_OK=0 产物: 有` —— 逻辑上不该有产物，
+才回头查这行。**教训：验证一个修复要看它的效果是否消失，而不是看代码是否存在。**
+写进文档 ≠ 生效。
+
+**A9. `Unknown option` 类错误绕过了自动降级**
+
+FFmpeg 遇到未知开关时输出的是：
+
+```
+Unknown option "--enable-libglslang".
+```
+
+**不带 `ERROR:` 前缀**，而我的降级循环只 `grep '^ERROR: '` → 提取不到开关名 →
+直接放弃重试 → 零产物。修法：错误提取正则扩成 `'^ERROR: |^Unknown option '`，
+并从引号里解析出开关名摘掉。
+
+顺带纠正一个错误参照：Termux 那份带 `--enable-libglslang` 的配置行是**旧版**的，
+最新的 9.0.2 配置行里没有它。用历史配置行当权威依据时必须先确认它是当前版本产出的。
+
+---
+
+
 ### B 类：Android / bionic 与 NDK 的坑
 
 **B1. bionic 没有 `libpthread`**
@@ -425,37 +460,54 @@ comm -13 s.enc t.enc        # Termux 有而单体没有的
 
 ---
 
-## 八、收尾状态与下次继续的入口
+## 七、收尾状态与下次继续的入口
 
 **当前已知可用版本**：commit `fb6a6e1` / run #101 / 产物 59,461,536 字节，
 已打 tag **`single-9.0.2-working`**。下次直接从它开始，不要回退到更早的脚本。
 
-### 唯一剩下的突破口：libplacebo
+### libplacebo 这条线追了 14 轮，最后止损（run #107 → #121）
 
-FFmpeg 8+ 把 `*_vulkan` 滤镜和 `av1/ffv1/prores_ks_vulkan` 编码器接到 placebo 后端，
-所以 placebo 一进，能同时带回约 30 个滤镜和 3 个编码器。
-
-它此前失败的确切位置（run #79 时代）：
+先纠正一个我自己带偏的判断：**18 个 `*_vulkan` 滤镜根本不依赖 libplacebo**。
+FFmpeg 9.0.2 的依赖是 `vulkan + spirv_compiler`，而 `spirv_compiler` 是靠
+**在构建机上查找 `glslangValidator` 可执行程序**启用的（宿主工具，不是库）：
 
 ```
-libplacebo 的 meson.build: find_library('SPIRV') 只找 shared，
-纯静态构建下找不到 → 配置失败
+avgblur_vulkan_filter_deps="vulkan spirv_compiler"
+...
+for program in $glslc glslc glslang glslangValidator; do    # ← 找的是程序
 ```
 
-突破口（下次按顺序试）：
+所以在 workflow 的 apt 里加一个 `glslang-tools`，那 18 个滤镜和
+`ffv1/prores_ks_vulkan` 编码器就全回来了 —— 产物从 59,461,536 涨到 59,954,816。
+这一步和 placebo 无关，是当晚收益最大的一次修改。
 
-1. **`libSPIRV.a` 已经编出来了**（glslang 的产物，在 `$PREFIX/lib` 里），
-   所以不是缺库，是缺 pkg-config 元数据。给 placebo 造一份
-   `$PREFIX/lib/pkgconfig/SPIRV.pc`（`Libs: -L${libdir} -lSPIRV -lSPVRemapper`），
-   让它用 `dependency('SPIRV')` 而不是 `find_library`。
-2. 若仍走 `find_library`，用 meson 的 `-Dc_args`/`-Dlink_args` 或
-   `--build.pkg_config_path` 提示；实在不行就 patch 它的 `meson.build`
-   把 `find_library('SPIRV')` 换成 `dependency('SPIRV', static: true)`。
-3. placebo 还要 `-Dlcms=enabled`（我们 `liblcms2.a` 有）、`-Dvulkan=enabled`、
-   `-Dglslang=enabled`；注意它的 lcms 选项值必须是 `enabled/disabled/auto`，
-   **不能写 `true`**（这个坑踩过，报 `Value "true" is not one of the choices`）。
-4. 一旦 placebo 装上，ffmpeg 侧要加 `--enable-libplacebo` 和 `--enable-libglslang`
-   （两个都是合法开关，Termux 旧配置行里出现过 `--enable-libglslang`）。
+placebo 本身则每轮只消化一个缺口：
+
+| run | 报错 | 真因 | 处理 |
+|---|---|---|---|
+| 107 | `SPIRV not found` | meson 的 `find_library` **只搜编译器 `--print-search-dirs` 报出的内建目录，完全不认 `-L`/`link_args`** | 把 glslang 的 `.a` 拷进 `sysroot/usr/lib/aarch64-linux-android/` |
+| 108 | `OGLCompiler not found` | glslang 的 `add_subdirectory(OGLCompilersDLL)` 挂在 `ENABLE_HLSL` 条件里，而我设了 OFF | 当时只造了占位空库（治标） |
+| 110 | `utils_gen.c` 生成失败 | placebo 构建期要 `vk.xml`，我装 Vulkan-Headers 时只拷了 `include/` | 一并拷 `registry/vk.xml` 并传 `-Dvulkan-registry=` |
+| 111–113 | `float_common.h` 找不到 | fast_float 是**多文件**头库，我只拷了 `fast_float.h`；且它的 include 还有一层目录 | 按 `float_common.h` 反查目录，整目录拷 |
+| 114 | 库编出来了，但 ffmpeg 判 `libplacebo not found` | — | 失败库归零 |
+| 116 | 同上 | **清理 `.pc` 的代码写在 `do_meson` 之前，而 `.pc` 是 install 才生成的 → 那个 if 分支从未执行** | 挪到构建之后 |
+| 117 | `undefined symbol: vkGetInstanceProcAddr` | `libplacebo.a` 的 context.c 直接调 vulkan，但 `.pc` 不带 `-lvulkan` | 补 `-lvulkan` |
+| 118 | `glslang::InitializeProcess()` 未定义 | **我误删了 `Requires.private`**（它正是 placebo 带出 glslang 的通道） | 恢复，只保留补 `-lvulkan` |
+| 119–121 | 仍缺 `glslang::InitializeProcess` | 显式往 `Libs` 里写全 glslang 链、再补 `-lOGLCompiler` 都没用 —— 说明**缓存里沿用的是我造的占位空库，真库到底产出没有尚未验证** | 止损停用调度 |
+
+止损的理由要写清楚，避免下次又无脑重启这条线：
+
+1. 收益只有 `placebo` **一个滤镜**（`libplacebo` 后端在 FFmpeg 里只对应它，
+   且要求 `>= 7.351.0`，我已把版本从 6.338 升过去了）；
+2. 最后一轮的缺口不再是"新未知"，而是"我造的占位库污染了缓存"这种需要**先验证再动手**的问题；
+3. 每轮 4–5 分钟，边际收益已经低于时间成本。
+
+**下次恢复前的第一个验证点**（别直接改链接参数）：在 `b_glslang` 里 `ENABLE_HLSL=ON`
+构建完之后 `ls $SRC/glslang/build/**/libOGLCompiler.a`，确认真库存在、且
+`llvm-nm --defined-only` 里能看到 `InitializeProcess`。若真库存在，还要确认
+`$PREFIX/lib/libOGLCompiler.a` 没有被旧的占位库顶掉（占位逻辑是 `[ ! -e ]`，
+缓存里的占位文件会让它永远跳过 —— 这是这条线最可能的最后一环）。
+
 
 ### 其它可选项（收益低，按需）
 
@@ -477,7 +529,7 @@ libplacebo 的 meson.build: find_library('SPIRV') 只找 shared，
   `raw.githubusercontent.com`（有 CDN 缓存，会拿到上一轮的）。
 
 
-## 九、下次升级版本怎么操作
+## 八、下次升级版本怎么操作
 
 1. 改 `build.sh` 里的 `FFMPEG_VER` 与依赖库版本号。
 2. **同步更新权威配置行参照物**：从设备 Termux 里取

@@ -661,7 +661,14 @@ b_placebo() {
         # sysroot 里有可链接的 libvulkan.so stub，运行时由系统提供（已列入 NEEDED 白名单）。
         grep -q -- '-lvulkan' $PREFIX/lib/pkgconfig/libplacebo.pc || \
             sed -i 's/^Libs: .*/& -lvulkan/' $PREFIX/lib/pkgconfig/libplacebo.pc
-        echo "补 -lvulkan 后 --static --libs: $($PKGCFG --static --libs libplacebo 2>&1)"
+        # 实测 libplacebo.pc 的 Requires.private 并不引用 glslang，Libs 里也没有，
+        # 于是链接缺 glslang::InitializeProcess/FinalizeProcess。这里不靠推断，
+        # 直接把整条 glslang 依赖链显式写进 Libs（顺序：调用者在左，被依赖者在右）。
+        grep -q -- '-lglslang' $PREFIX/lib/pkgconfig/libplacebo.pc || \
+            sed -i "s|^Libs: .*|& -lglslang -lMachineIndependent -lGenericCodeGen -lSPIRV -lOSDependent -lSPVRemapper -lglslang-default-resource-limits -lc++_static -lc++abi|" \
+                $PREFIX/lib/pkgconfig/libplacebo.pc
+        echo "最终 Libs: $(sed -n 's/^Libs: //p' $PREFIX/lib/pkgconfig/libplacebo.pc)"
+        echo "补依赖后 --static --libs: $($PKGCFG --static --libs libplacebo 2>&1)"
     fi
 }
 

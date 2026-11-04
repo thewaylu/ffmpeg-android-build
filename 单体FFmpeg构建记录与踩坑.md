@@ -11,25 +11,27 @@
 
 | 项目 | 结果 |
 |---|---|
-| 产物 | `libffmpeg.so` 59,461,536 字节（strip 后）；未 strip 215 MB；artifact 压缩包 27 MB |
+| 产物 | `libffmpeg.so` **59,954,816** 字节（strip 后）；未 strip 215 MB；artifact 压缩包 27.5 MB |
 | 形态 | PIE 可执行 ELF（`Type: DYN`），AArch64 —— App 用 `Bin.exec` 直接执行它 |
 | 动态依赖 | **仅 7 个系统库**：`libm libandroid libcamera2ndk libmediandk libdl libc liblog`（vulkan 走运行时加载，没有 `NEEDED libvulkan.so`） |
-| 依赖库 | 49 个编译成功，1 个主动放弃（libssh） |
-| 启用开关 | 36 个库开关 + `--enable-vulkan` + `--enable-mediacodec` + `--enable-jni` + `--enable-lcms2` |
+| 依赖库 | 49 个编译成功；libssh 停用、libplacebo 止损停用 |
+| 启用开关 | 36 个库开关 + `--enable-vulkan`（含 `spirv_compiler`）+ `--enable-mediacodec` + `--enable-jni` + `--enable-lcms2` |
 | 装机位置 | `/sdcard/Android/data/com.silentlexx.ffmpeggui/files/bin/ffmpeg_9.02.so`（u0_a471:u0_a471, 770） |
 | 独立运行验证 | `LD_LIBRARY_PATH=/system/lib64:/vendor/lib64` 下 `-version` 正常输出 |
 | 真实转码验证 | x265+opus ✓ x264+mp3 ✓ SVT-AV1+aac ✓（回读为 libdav1d 解码）JPEG XL ✓ |
-| 手机实测（vs Termux 9.0.2） | 编码器 214 / 218，**解码器 547 / 547 零差异**，滤镜 494 / 535 |
+| **手机实测（vs Termux 9.0.2）** | 编码器 **216 / 218**，解码器 **547 / 547 零差异**，滤镜 **512 / 535**，**vulkan 滤镜 18 / 18 全齐** |
 
-### 与 Termux 官方 9.0.2 的差距（vulkan/openmpt 已找回后）
+实测到的 18 个 vulkan 滤镜：`avgblur blackdetect blend bwdif chromaber color flip gblur hflip interlace nlmeans overlay scale scdet transpose v360 vflip xfade`（均 `_vulkan`）。
 
-Termux 配置行是权威目标（45 个 `--enable-*`）。当前差距：
+### 与 Termux 官方 9.0.2 的最终差距
 
-- **解码器：零差异**（547 = 547，openmpt 回来后 mod/s3m/xm/it 补齐）
-- 软件编码器：**无差异**（x264/x265/aom/dav1d/svtav1/vpx/xvid/opus/vorbis/theora/lame/amrb 系/gme/openmpt/soxr/zimg/vmaf/mysofa/webp/jxl/xml2/zmq/srt/openssl/bluray/dvd*/ass/freetype/fribidi/harfbuzz/fontconfig/lcms2 全在）
-- 仍缺的 4 个编码器：`librav1e` + `av1_vulkan` / `ffv1_vulkan` / `prores_ks_vulkan`
-  （`h264_vulkan` / `hevc_vulkan` 已随 `--enable-vulkan` 回来）
-- 仍缺的 41 个滤镜：`*_vulkan` 与 `*_opencl` 的 GPU 版本 + `libplacebo` + `vidstab*`
+- **解码器：零差异**（547 = 547）
+- **vulkan 滤镜：零差异**（18 = 18）
+- 软件编码器：**零差异**
+- 仍缺的 2 个编码器：`librav1e`（AV1 已有 aom + svtav1 两路）、`av1_vulkan`
+- 仍缺的 23 个滤镜：`*_opencl` 系列（未启 `--enable-opencl`）、`libplacebo`、`vidstabdetect/transform`
+- 结构性放弃：`rav1e`、`placebo`（14 轮止损，见下）、`vidstab`（x86 intrinsics）、
+  `xcb` 系列（X11 抓屏）、`libv4l2`（只出 `.so`）、`libssh`（只服务 sftp）
 
 **剩余差距基本收敛到一个根因：`libplacebo`。**
 FFmpeg 8+ 把绝大多数 `*_vulkan` 滤镜和大部分 vulkan 编码器迁到了 placebo 后端，

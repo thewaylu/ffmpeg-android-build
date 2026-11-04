@@ -26,7 +26,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq \
             autoconf automake libtool libtool-bin autoconf-archive \
-            cmake ninja-build nasm yasm pkg-config wget curl git unzip xz-utils \
+            cmake ninja-build nasm yasm glslang-tools pkg-config wget curl git unzip xz-utils \
             gawk patch file python3-pip python3-setuptools python3-wheel
           sudo pip3 install --upgrade meson
           meson --version; ninja --version; cmake --version | head -1

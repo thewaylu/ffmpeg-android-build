@@ -602,7 +602,7 @@ EOF
 b_placebo() {
     vulkan_headers || return 1
     b_glslang_pc
-    fetch placebo https://code.videolan.org/videolan/libplacebo/-/archive/v6.338.0/libplacebo-v6.338.0.tar.bz2 placebo
+    fetch placebo https://code.videolan.org/videolan/libplacebo/-/archive/v7.351.0/libplacebo-v7.351.0.tar.bz2 placebo
     # meson 的 cpp.find_library('SPIRV') 只搜编译器 --print-search-dirs 报出的内建目录，
     # 根本不认 -L / link_args，所以把 glslang 的静态库直接放进 sysroot 的库目录。
     # glslang 15.1 已经把 OGLCompilersDLL 合并进 MachineIndependent，不再产出

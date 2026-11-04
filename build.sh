@@ -566,6 +566,14 @@ b_vmaf() {
 # ============================================================================
 # 第 6 层：Vulkan / GPU（清单里最重）
 # ============================================================================
+vulkan_headers() {
+    fetch vulkan_hdr "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.3.278.tar.gz https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.3.275.tar.gz" vulkan_hdr || return 1
+    mkdir -p $PREFIX/include
+    rm -rf $PREFIX/include/vulkan $PREFIX/include/vk_video $PREFIX/include/vk_struct_helper
+    cp -rf "$SRC/vulkan_hdr/include/." $PREFIX/include/
+    echo "Vulkan-Headers VK_HEADER_VERSION=$(sed -n 's/^#  *define  *VK_HEADER_VERSION  *\([0-9]*\).*//p' $PREFIX/include/vulkan/vulkan_core.h | head -1)"
+}
+
 b_glslang() {
     fetch glslang https://github.com/KhronosGroup/glslang/archive/refs/tags/15.1.0.tar.gz glslang
     do_cmake glslang -DENABLE_OPT=OFF -DGLSLANG_TESTS=OFF -DENABLE_HLSL=OFF -DBUILD_TESTING=OFF
@@ -578,17 +586,17 @@ includedir=\${prefix}/include
 Name: glslang
 Description: glslang
 Version: 15.1.0
-Libs: -L\${libdir} -lSPIRV -lglslang -lMachineIndependent -lGenericCodeGen -lOSDependent -lSPVRemapper -lstdc++
+Libs: -L\${libdir} -lSPIRV -lglslang -lMachineIndependent -lGenericCodeGen -lOSDependent -lSPVRemapper -lc++_static -lc++abi
 Cflags: -I\${includedir}
 EOF
 }
 b_placebo() {
+    vulkan_headers || return 1
     b_glslang_pc
     fetch placebo https://code.videolan.org/videolan/libplacebo/-/archive/v6.338.0/libplacebo-v6.338.0.tar.bz2 placebo
-    cd "$SRC/placebo"
-    git submodule update --init --depth 1 src/vulkan src/gl 2>/dev/null || true
-    do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=enabled \
-        -Ddemos=false -Dtests=false
+    # archive 解出来的包没有 .git，原来的 git submodule 那步是空操作
+    do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=enabled         -Dopengl=disabled -Dgles=disabled -Dd3d12=disabled -Dvkd3d=disabled         -Ddemos=disabled -Ddocs=disabled -Dtests=disabled
+    ls -l $PREFIX/lib/libplacebo.a 2>/dev/null
 }
 
 # ============================================================================
@@ -684,6 +692,7 @@ run_step brotli     b_brotli
 run_step highway    b_highway
 run_step jxl        b_jxl libjxl.a
 run_step glslang    b_glslang
+run_step placebo    b_placebo libplacebo.a
 run_step xml2       b_xml2
 run_step srt        b_srt libsrt.a
 # libssh 主动排除：只服务 sftp:// 协议，Android 端本地转码用不到；
@@ -805,6 +814,8 @@ flag libfribidi.a           --enable-libfribidi
 flag libharfbuzz.a          --enable-libharfbuzz
 flag libfontconfig.a        --enable-libfontconfig
 flag liblcms2.a             --enable-lcms2
+flag libplacebo.a           --enable-libplacebo
+flag libglslang.a           --enable-libglslang
 flag libv4l2.a              --enable-libv4l2
 
 

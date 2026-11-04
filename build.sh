@@ -595,7 +595,7 @@ includedir=\${prefix}/include
 Name: glslang
 Description: glslang
 Version: 15.1.0
-Libs: -L\${libdir} -lSPIRV -lglslang -lMachineIndependent -lGenericCodeGen -lOSDependent -lSPVRemapper -lc++_static -lc++abi
+Libs: -L\${libdir} -lSPIRV -lglslang -lOGLCompiler -lMachineIndependent -lGenericCodeGen -lOSDependent -lSPVRemapper -lc++_static -lc++abi
 Cflags: -I\${includedir}
 EOF
 }
@@ -667,7 +667,7 @@ b_placebo() {
         # 于是链接缺 glslang::InitializeProcess/FinalizeProcess。这里不靠推断，
         # 直接把整条 glslang 依赖链显式写进 Libs（顺序：调用者在左，被依赖者在右）。
         grep -q -- '-lglslang' $PREFIX/lib/pkgconfig/libplacebo.pc || \
-            sed -i "s|^Libs: .*|& -lglslang -lMachineIndependent -lGenericCodeGen -lSPIRV -lOSDependent -lSPVRemapper -lglslang-default-resource-limits -lc++_static -lc++abi|" \
+            sed -i "s|^Libs: .*|& -lglslang -lOGLCompiler -lMachineIndependent -lGenericCodeGen -lSPIRV -lOSDependent -lSPVRemapper -lglslang-default-resource-limits -lc++_static -lc++abi|" \
                 $PREFIX/lib/pkgconfig/libplacebo.pc
         echo "最终 Libs: $(sed -n 's/^Libs: //p' $PREFIX/lib/pkgconfig/libplacebo.pc)"
         echo "补依赖后 --static --libs: $($PKGCFG --static --libs libplacebo 2>&1)"

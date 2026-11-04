@@ -594,8 +594,8 @@ b_placebo() {
     vulkan_headers || return 1
     b_glslang_pc
     fetch placebo https://code.videolan.org/videolan/libplacebo/-/archive/v6.338.0/libplacebo-v6.338.0.tar.bz2 placebo
-    # archive 解出来的包没有 .git，原来的 git submodule 那步是空操作
-    do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=enabled         -Dopengl=disabled -Dgles=disabled -Dd3d12=disabled -Dvkd3d=disabled         -Ddemos=disabled -Ddocs=disabled -Dtests=disabled
+    # 选项类型必须对齐 meson_options.txt：feature 用 enabled/disabled，boolean 用 true/false
+    do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=enabled -Dopengl=disabled -Dd3d11=disabled -Dshaderc=disabled -Ddovi=disabled -Dlibdovi=disabled -Dxxhash=disabled -Ddemos=false -Dtests=false -Dbench=false -Dfuzz=false
     ls -l $PREFIX/lib/libplacebo.a 2>/dev/null
 }
 

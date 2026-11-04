@@ -635,16 +635,26 @@ b_placebo() {
     _ffd=$(dirname "$_fc")
     cp -f "$_ffd"/*.h $PREFIX/include/fast_float/
     echo "fast_float 头目录: $_ffd → $(ls $PREFIX/include/fast_float/ | tr '\n' ' ')"
-    # placebo 的 .pc 里 Requires.private 常引用未安装的包名（子项目依赖），
-    # 会让 pkg-config --static 直接报错，ffmpeg 于是判 "libplacebo not found"。
-    if [ -f $PREFIX/lib/pkgconfig/libplacebo.pc ]; then
-        echo "原始 libplacebo.pc:"; sed 's/^/    /' $PREFIX/lib/pkgconfig/libplacebo.pc
-        sed -i '/^Requires\.private:/d;/^Requires:/d' $PREFIX/lib/pkgconfig/libplacebo.pc
-        echo "清理后 pkg-config --static --libs: $($PKGCFG --static --libs libplacebo 2>&1)"
-        echo "清理后 --exists: $($PKGCFG --exists --print-errors 'libplacebo >= 7.351.0' 2>&1 && echo OK)"
-    fi
     do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=enabled -Dopengl=disabled -Dd3d11=disabled -Dshaderc=disabled -Ddovi=disabled -Dlibdovi=disabled -Dxxhash=disabled -Dvulkan-registry=$PREFIX/share/vulkan/registry/vk.xml -Ddemos=false -Dtests=false -Dbench=false -Dfuzz=false
     ls -l $PREFIX/lib/libplacebo.a 2>/dev/null
+
+    # 以下必须放在 do_meson 之后 —— libplacebo.pc 是 install 阶段才生成的，
+    # 之前放在前面时那个 if 分支从来没执行过。
+    if [ -f $PREFIX/lib/pkgconfig/libplacebo.pc ]; then
+        echo "原始 libplacebo.pc:"; sed 's/^/    /' $PREFIX/lib/pkgconfig/libplacebo.pc
+        # Requires/Requires.private 引用未安装的子项目包名时，pkg-config --static 会直接报错
+        sed -i '/^Requires\.private:/d;/^Requires:/d' $PREFIX/lib/pkgconfig/libplacebo.pc
+        # pkg-config 比较版本时把 "7.351" 判成小于 "7.351.0"，而 FFmpeg 要求 >= 7.351.0
+        _pv=$($PKGCFG --modversion libplacebo 2>/dev/null)
+        echo "Version: ${_pv:-取不到}"
+        case "${_pv:-}" in
+            *.*.*) : ;;
+            *.*) sed -i "s/^Version: .*/Version: ${_pv}.0/" $PREFIX/lib/pkgconfig/libplacebo.pc
+                 echo "两段版本号，已补齐为 ${_pv}.0" ;;
+        esac
+        echo "清理后 --exists: $($PKGCFG --exists --print-errors 'libplacebo >= 7.351.0' 2>&1 && echo OK)"
+        echo "清理后 --static --libs: $($PKGCFG --static --libs libplacebo 2>&1)"
+    fi
 }
 
 # ============================================================================
@@ -1015,7 +1025,8 @@ fi
     for probe in "libopenmpt libopenmpt/libopenmpt.h openmpt_module_create" \
                  "libopenmpt libopenmpt/libopenmpt.h openmpt_module_create2" \
                  "libzmq zmq.h zmq_ctx_new" "srt srt/srt.h srt_socket" \
-                 "vulkan vulkan/vulkan.h vkCreateInstance"; do
+                 "vulkan vulkan/vulkan.h vkCreateInstance" \
+                 "libplacebo libplacebo/vulkan.h pl_vulkan_create"; do
         set -- $probe
         pcp=$1; pch=$2; pcs=$3
         printf '#include <%s>\nint main(void){ return (int)(size_t)&%s; }\n' "$pch" "$pcs" > /tmp/probe.c

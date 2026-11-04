@@ -596,7 +596,7 @@ b_placebo() {
     fetch placebo https://code.videolan.org/videolan/libplacebo/-/archive/v6.338.0/libplacebo-v6.338.0.tar.bz2 placebo
     # meson 的 cpp.find_library('SPIRV') 只搜编译器 --print-search-dirs 报出的内建目录，
     # 根本不认 -L / link_args，所以把 glslang 的静态库直接放进 sysroot 的库目录。
-    for _a in SPIRV glslang MachineIndependent GenericCodeGen OSPDependent SPVRemapper               glslang-default-resource-limits; do
+    for _a in SPIRV glslang MachineIndependent GenericCodeGen OSDependent SPVRemapper               glslang-default-resource-limits; do
         [ -f "$PREFIX/lib/lib$_a.a" ] && cp -f "$PREFIX/lib/lib$_a.a" "$SYSROOT/usr/lib/aarch64-linux-android/" 2>/dev/null || true
     done
     echo "已放进 sysroot 的 glslang 库: $(ls $SYSROOT/usr/lib/aarch64-linux-android/lib*.a 2>/dev/null | xargs -n1 basename | tr '

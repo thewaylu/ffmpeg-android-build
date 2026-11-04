@@ -601,6 +601,18 @@ b_placebo() {
     fetch placebo https://code.videolan.org/videolan/libplacebo/-/archive/v6.338.0/libplacebo-v6.338.0.tar.bz2 placebo
     # meson 的 cpp.find_library('SPIRV') 只搜编译器 --print-search-dirs 报出的内建目录，
     # 根本不认 -L / link_args，所以把 glslang 的静态库直接放进 sysroot 的库目录。
+    # glslang 15.1 已经把 OGLCompilersDLL 合并进 MachineIndependent，不再产出
+    # libOGLCompiler.a；而 libplacebo 6.338 的 static 分支仍然硬性
+    # find_library('OGLCompiler', required: true)。它只要"这个库存在"，
+    # 符号实际都在别的库里，所以造一个占位归档即可过关。
+    if [ ! -e $PREFIX/lib/libOGLCompiler.a ]; then
+        echo 'static int _placebo_oglcompiler_placeholder(void){return 0;}' > /tmp/oglc.c
+        $CC -c -fPIC -o /tmp/oglc.o /tmp/oglc.c
+        rm -f $PREFIX/lib/libOGLCompiler.a
+        $AR rcs $PREFIX/lib/libOGLCompiler.a /tmp/oglc.o
+        echo "已造占位库 libOGLCompiler.a"
+    fi
+
     for _f in "$PREFIX"/lib/lib*.a; do
         case "$(basename "$_f")" in
             libSPIRV.a|libglslang*.a|libMachineIndependent.a|libGenericCodeGen.a|libOSDependent.a|libSPVRemapper.a|libOGLCompiler.a|libHLSL.a)

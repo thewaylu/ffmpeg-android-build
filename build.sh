@@ -642,8 +642,10 @@ b_placebo() {
     # 之前放在前面时那个 if 分支从来没执行过。
     if [ -f $PREFIX/lib/pkgconfig/libplacebo.pc ]; then
         echo "原始 libplacebo.pc:"; sed 's/^/    /' $PREFIX/lib/pkgconfig/libplacebo.pc
-        # Requires/Requires.private 引用未安装的子项目包名时，pkg-config --static 会直接报错
-        sed -i '/^Requires\.private:/d;/^Requires:/d' $PREFIX/lib/pkgconfig/libplacebo.pc
+        # 注意：不要删 Requires.private —— 它是 placebo 带出 glslang 依赖的通道。
+        # 上一版删掉之后 pkg-config 解析不再报错，但链接改成缺 glslang::InitializeProcess()，
+        # 说明原本真正的缺口只有 -lvulkan 一项。
+        echo "Requires: $(sed -n 's/^Requires[^:]*: //p' $PREFIX/lib/pkgconfig/libplacebo.pc | tr '\n' ' ')"
         # pkg-config 比较版本时把 "7.351" 判成小于 "7.351.0"，而 FFmpeg 要求 >= 7.351.0
         _pv=$($PKGCFG --modversion libplacebo 2>/dev/null)
         echo "Version: ${_pv:-取不到}"

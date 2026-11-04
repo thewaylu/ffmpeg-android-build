@@ -571,6 +571,10 @@ vulkan_headers() {
     mkdir -p $PREFIX/include
     rm -rf $PREFIX/include/vulkan $PREFIX/include/vk_video $PREFIX/include/vk_struct_helper
     cp -rf "$SRC/vulkan_hdr/include/." $PREFIX/include/
+    # placebo 构建期要用 python 从 vk.xml 生成 vulkan 代码，光有头文件不够
+    mkdir -p $PREFIX/share/vulkan/registry
+    cp -f "$SRC/vulkan_hdr/registry/vk.xml" $PREFIX/share/vulkan/registry/ 2>/dev/null || true
+    ls -l $PREFIX/share/vulkan/registry/vk.xml 2>/dev/null
     echo "Vulkan-Headers VK_HEADER_VERSION=$(sed -n 's/^#  *define  *VK_HEADER_VERSION  *\([0-9]*\).*//p' $PREFIX/include/vulkan/vulkan_core.h | head -1)"
 }
 
@@ -621,7 +625,7 @@ b_placebo() {
     done
     echo "已放进 sysroot 的 glslang 库: $(ls $SYSROOT/usr/lib/aarch64-linux-android/lib*.a 2>/dev/null | xargs -n1 basename | tr '
 ' ' ')"
-    do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=enabled -Dopengl=disabled -Dd3d11=disabled -Dshaderc=disabled -Ddovi=disabled -Dlibdovi=disabled -Dxxhash=disabled -Ddemos=false -Dtests=false -Dbench=false -Dfuzz=false
+    do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=enabled -Dopengl=disabled -Dd3d11=disabled -Dshaderc=disabled -Ddovi=disabled -Dlibdovi=disabled -Dxxhash=disabled -Dvulkan-registry=$PREFIX/share/vulkan/registry/vk.xml -Ddemos=false -Dtests=false -Dbench=false -Dfuzz=false
     ls -l $PREFIX/lib/libplacebo.a 2>/dev/null
 }
 
@@ -1063,6 +1067,12 @@ TEOF
         fi
         # 只给第一条错误行经常看不出真正的 fatal 在哪（前面全是可选依赖的 warning）
         echo "      尾部: $(tail -20 "$LOGDIR/$f.log" 2>/dev/null | tr '\n' ' | ' | cut -c1-1400)"
+        # 代码生成类失败的关键信息在 FAILED 之后（python traceback），tail 常常抓不到
+        _fl=$(grep -n "FAILED" "$LOGDIR/$f.log" 2>/dev/null | tail -1 | cut -d: -f1)
+        if [ -n "$_fl" ]; then
+            echo "      FAILED 之后:"
+            sed -n "${_fl},$((_fl+16))p" "$LOGDIR/$f.log" 2>/dev/null | sed "s/^/        /"
+        fi
     done
     echo
     if [ -f "$SRC/ffmpeg/ffbuild/config.log" ]; then

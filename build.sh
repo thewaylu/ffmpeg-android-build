@@ -629,10 +629,11 @@ b_placebo() {
     # meson subproject wrap，就退化到要求系统提供 <fast_float/fast_float.h>。
     fetch fast_float https://github.com/fastfloat/fast_float/archive/refs/tags/v6.1.1.tar.gz fast_float || return 1
     mkdir -p $PREFIX/include/fast_float
-    _ff=$(find "$SRC/fast_float" -name fast_float.h -type f | head -1)
-    [ -n "$_ff" ] || { echo "找不到 fast_float.h"; return 1; }
-    cp -f "$_ff" $PREFIX/include/fast_float/fast_float.h
-    echo "已装 fast_float: $PREFIX/include/fast_float/fast_float.h"
+    _ffd=$(find "$SRC/fast_float" -type d -name include | head -1)
+    [ -n "$_ffd" ] || { echo "找不到 fast_float 的 include 目录"; return 1; }
+    # fast_float.h 内部还 #include "float_common.h" 等兄弟头，只拷它自己不够
+    cp -f "$_ffd"/*.h $PREFIX/include/fast_float/
+    echo "已装 fast_float 头: $(ls $PREFIX/include/fast_float/ | tr '\n' ' ')"
     do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=enabled -Dopengl=disabled -Dd3d11=disabled -Dshaderc=disabled -Ddovi=disabled -Dlibdovi=disabled -Dxxhash=disabled -Dvulkan-registry=$PREFIX/share/vulkan/registry/vk.xml -Ddemos=false -Dtests=false -Dbench=false -Dfuzz=false
     ls -l $PREFIX/lib/libplacebo.a 2>/dev/null
 }

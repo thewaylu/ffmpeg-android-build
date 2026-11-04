@@ -654,6 +654,12 @@ b_placebo() {
         esac
         echo "清理后 --exists: $($PKGCFG --exists --print-errors 'libplacebo >= 7.351.0' 2>&1 && echo OK)"
         echo "清理后 --static --libs: $($PKGCFG --static --libs libplacebo 2>&1)"
+        # libplacebo 的 context.c 直接调用 vkGetInstanceProcAddr，但它的 .pc 不带 -lvulkan，
+        # 于是 FFmpeg 的静态链接探测报 undefined symbol → 判 "libplacebo not found"。
+        # sysroot 里有可链接的 libvulkan.so stub，运行时由系统提供（已列入 NEEDED 白名单）。
+        grep -q -- '-lvulkan' $PREFIX/lib/pkgconfig/libplacebo.pc || \
+            sed -i 's/^Libs: .*/& -lvulkan/' $PREFIX/lib/pkgconfig/libplacebo.pc
+        echo "补 -lvulkan 后 --static --libs: $($PKGCFG --static --libs libplacebo 2>&1)"
     fi
 }
 

@@ -635,6 +635,14 @@ b_placebo() {
     _ffd=$(dirname "$_fc")
     cp -f "$_ffd"/*.h $PREFIX/include/fast_float/
     echo "fast_float 头目录: $_ffd → $(ls $PREFIX/include/fast_float/ | tr '\n' ' ')"
+    # placebo 的 .pc 里 Requires.private 常引用未安装的包名（子项目依赖），
+    # 会让 pkg-config --static 直接报错，ffmpeg 于是判 "libplacebo not found"。
+    if [ -f $PREFIX/lib/pkgconfig/libplacebo.pc ]; then
+        echo "原始 libplacebo.pc:"; sed 's/^/    /' $PREFIX/lib/pkgconfig/libplacebo.pc
+        sed -i '/^Requires\.private:/d;/^Requires:/d' $PREFIX/lib/pkgconfig/libplacebo.pc
+        echo "清理后 pkg-config --static --libs: $($PKGCFG --static --libs libplacebo 2>&1)"
+        echo "清理后 --exists: $($PKGCFG --exists --print-errors 'libplacebo >= 7.351.0' 2>&1 && echo OK)"
+    fi
     do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=enabled -Dopengl=disabled -Dd3d11=disabled -Dshaderc=disabled -Ddovi=disabled -Dlibdovi=disabled -Dxxhash=disabled -Dvulkan-registry=$PREFIX/share/vulkan/registry/vk.xml -Ddemos=false -Dtests=false -Dbench=false -Dfuzz=false
     ls -l $PREFIX/lib/libplacebo.a 2>/dev/null
 }

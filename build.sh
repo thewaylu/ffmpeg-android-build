@@ -595,7 +595,7 @@ b_placebo() {
     b_glslang_pc
     fetch placebo https://code.videolan.org/videolan/libplacebo/-/archive/v6.338.0/libplacebo-v6.338.0.tar.bz2 placebo
     # 选项类型必须对齐 meson_options.txt：feature 用 enabled/disabled，boolean 用 true/false
-    do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=enabled -Dopengl=disabled -Dd3d11=disabled -Dshaderc=disabled -Ddovi=disabled -Dlibdovi=disabled -Dxxhash=disabled -Ddemos=false -Dtests=false -Dbench=false -Dfuzz=false
+    do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=enabled -Dopengl=disabled -Dd3d11=disabled -Dshaderc=disabled -Ddovi=disabled -Dlibdovi=disabled -Dxxhash=disabled -Dc_link_args=-L$PREFIX/lib -Dcpp_link_args=-L$PREFIX/lib -Ddemos=false -Dtests=false -Dbench=false -Dfuzz=false
     ls -l $PREFIX/lib/libplacebo.a 2>/dev/null
 }
 
@@ -815,7 +815,6 @@ flag libharfbuzz.a          --enable-libharfbuzz
 flag libfontconfig.a        --enable-libfontconfig
 flag liblcms2.a             --enable-lcms2
 flag libplacebo.a           --enable-libplacebo
-flag libglslang.a           --enable-libglslang
 flag libv4l2.a              --enable-libv4l2
 
 
@@ -830,9 +829,9 @@ echo "启用开关: ${ENABLE_FLAGS[*]:-}"
 fetch ffmpeg "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VER.tar.xz https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n$FFMPEG_VER.tar.gz" ffmpeg
 cd "$SRC/ffmpeg"
 
-# 缓存里留着上一轮的 \$PREFIX/bin/ffmpeg。不先删掉的话，本轮 configure/make 失败也会被
-# 下面的 [ -x "\$BIN" ] 当成成功，拿旧产物冒充新结果（run#91 就是这样 2 分钟"成功"的）
-rm -f "\$PREFIX/bin/ffmpeg" "\$PREFIX/bin/ffprobe" "\$BUILD_ROOT/ffmpeg-unstripped" "\$PREFIX/lib/libffmpeg.so"
+# 缓存里留着上一轮的 $PREFIX/bin/ffmpeg。不先删掉的话，本轮 configure/make 失败也会被
+# 下面的 [ -x "$BIN" ] 当成成功，拿旧产物冒充新结果（run#91 就是这样 2 分钟"成功"的）
+rm -f "$PREFIX/bin/ffmpeg" "$PREFIX/bin/ffprobe" "$BUILD_ROOT/ffmpeg-unstripped" "$PREFIX/lib/libffmpeg.so"
 
 FF_OK=1
 TRY=0
@@ -870,24 +869,28 @@ while :; do
     TRY=$((TRY+1))
     if ffmpeg_configure; then FF_OK=1; break; fi
     cp -f "$LOGDIR/ffmpeg-configure.log" "$LOGDIR/ffmpeg-configure-attempt$TRY.log"
-    errline=$(grep -m1 '^ERROR: ' "$LOGDIR/ffmpeg-configure.log" | cut -c1-160)
-    echo "!!! configure 第 $TRY 次失败: ${errline:-（没有 ERROR 行，见日志）}"
+    errline=$(grep -m1 -E '^ERROR: |^Unknown option ' "$LOGDIR/ffmpeg-configure.log" | cut -c1-160)
+    echo "!!! configure 第 $TRY 次失败: ${errline:-（没有可识别的错误行，见日志）}"
+    flag=""
     case "${errline:-}" in
-        *vulkan*)
-            if [ "$VK_ON" = 1 ]; then
-                VK_ON=0; VK_STATE=降级关闭
-                echo "  错误确实指向 vulkan，摘掉 --enable-vulkan 重试"
-                continue
-            fi
-            echo "vulkan 已摘除仍失败，停止重试"; FF_OK=0; break ;;
+        *vulkan*) if [ "$VK_ON" = 1 ]; then VK_ON=0; VK_STATE=降级关闭
+                      echo "  错误指向 vulkan，摘掉 --enable-vulkan 重试"; continue; fi
+                  echo "vulkan 已摘除仍失败，停止重试"; FF_OK=0; break ;;
     esac
-    pkg=$(printf '%s' "${errline#ERROR: }" | sed -n 's/^\([a-zA-Z0-9_.+-]\{2,\}\).*/\1/p')
-    if [ -z "$pkg" ]; then echo "无法提取库名，停止重试"; FF_OK=0; break; fi
-    case "$pkg" in lib*) flag="--enable-$pkg";; *) flag="--enable-lib$pkg";; esac
+    # FFmpeg 遇到未知选项会直接退出且不写 ERROR: 行，必须单独识别
+    case "${errline:-}" in
+        "Unknown option "*)
+            flag=$(printf '%s' "$errline" | sed -n 's/.*Unknown option "\([^"]*\)".*/\1/p') ;;
+    esac
+    if [ -z "$flag" ]; then
+        pkg=$(printf '%s' "${errline#ERROR: }" | sed -n 's/^\([a-zA-Z0-9_.+-]\{2,\}\).*/\1/p')
+        if [ -z "$pkg" ]; then echo "无法从错误行提取开关名，停止重试"; FF_OK=0; break; fi
+        case "$pkg" in lib*) flag="--enable-$pkg";; *) flag="--enable-lib$pkg";; esac
+    fi
     new=()
     for f in "${ENABLE_FLAGS[@]}"; do [ "$f" = "$flag" ] || new+=("$f"); done
     if [ "${#new[@]}" -eq "${#ENABLE_FLAGS[@]}" ]; then
-        echo "$pkg 不在开关列表里（可能是编译器/链接器层面的问题），停止重试"
+        echo "$flag 不在开关列表里（可能是编译器/链接器层面的问题），停止重试"
         FF_OK=0; tail -30 "$LOGDIR/ffmpeg-configure.log"; break
     fi
     ENABLE_FLAGS=("${new[@]:-}")

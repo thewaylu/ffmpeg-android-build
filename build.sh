@@ -594,8 +594,14 @@ b_placebo() {
     vulkan_headers || return 1
     b_glslang_pc
     fetch placebo https://code.videolan.org/videolan/libplacebo/-/archive/v6.338.0/libplacebo-v6.338.0.tar.bz2 placebo
-    # 选项类型必须对齐 meson_options.txt：feature 用 enabled/disabled，boolean 用 true/false
-    do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=enabled -Dopengl=disabled -Dd3d11=disabled -Dshaderc=disabled -Ddovi=disabled -Dlibdovi=disabled -Dxxhash=disabled -Dc_link_args=-L$PREFIX/lib -Dcpp_link_args=-L$PREFIX/lib -Ddemos=false -Dtests=false -Dbench=false -Dfuzz=false
+    # meson 的 cpp.find_library('SPIRV') 只搜编译器 --print-search-dirs 报出的内建目录，
+    # 根本不认 -L / link_args，所以把 glslang 的静态库直接放进 sysroot 的库目录。
+    for _a in SPIRV glslang MachineIndependent GenericCodeGen OSPDependent SPVRemapper               glslang-default-resource-limits; do
+        [ -f "$PREFIX/lib/lib$_a.a" ] && cp -f "$PREFIX/lib/lib$_a.a" "$SYSROOT/usr/lib/aarch64-linux-android/" 2>/dev/null || true
+    done
+    echo "已放进 sysroot 的 glslang 库: $(ls $SYSROOT/usr/lib/aarch64-linux-android/lib*.a 2>/dev/null | xargs -n1 basename | tr '
+' ' ')"
+    do_meson placebo -Dvulkan=enabled -Dglslang=enabled -Dlcms=enabled -Dopengl=disabled -Dd3d11=disabled -Dshaderc=disabled -Ddovi=disabled -Dlibdovi=disabled -Dxxhash=disabled -Ddemos=false -Dtests=false -Dbench=false -Dfuzz=false
     ls -l $PREFIX/lib/libplacebo.a 2>/dev/null
 }
 
